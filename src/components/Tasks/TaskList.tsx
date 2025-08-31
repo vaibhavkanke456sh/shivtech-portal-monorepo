@@ -66,15 +66,6 @@ const TaskList: React.FC<TaskListProps> = ({ tasks, services, title, filter }) =
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-             {/* TEST BUTTON - REMOVE THIS - VERSION 2 */}
-       <div style={{background: 'purple', color: 'white', padding: '10px', textAlign: 'center'}}>
-         <button 
-           onClick={() => alert('TASKLIST TEST BUTTON VERSION 2 WORKS! Component is rendering!')}
-           style={{background: 'yellow', color: 'black', padding: '10px', fontSize: '20px'}}
-         >
-           🧪 TASKLIST TEST BUTTON V2 - CLICK ME!
-         </button>
-       </div>
       <div className="p-6 border-b">
         <h2 className="text-xl font-semibold text-gray-800">{title}</h2>
         <p className="text-sm text-gray-600 mt-1">{filteredTasks.length} tasks found</p>
