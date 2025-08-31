@@ -31,6 +31,31 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ token, role }) => {
 		username: '', email: '', password: '', firstName: '', lastName: ''
 	});
 
+	// Field-level errors for Create Admin
+	const [adminErrors, setAdminErrors] = useState<Record<string, string>>({});
+
+	// Client-side validation to mirror backend rules
+	const validateAdminForm = (form: typeof adminForm): Record<string, string> => {
+		const errors: Record<string, string> = {};
+		if (!/^[a-zA-Z0-9_]{3,30}$/.test(form.username)) {
+			errors.username = 'Username must be 3-30 chars; letters, numbers, underscore only.';
+		}
+		if (!/^\S+@\S+\.\S+$/.test(form.email)) {
+			errors.email = 'Enter a valid email address.';
+		}
+		const pwd = form.password || '';
+		if (!(pwd.length >= 6 && /[a-z]/.test(pwd) && /[A-Z]/.test(pwd) && /\d/.test(pwd))) {
+			errors.password = 'Password must be 6+ chars and include uppercase, lowercase and a number.';
+		}
+		if (!form.firstName || form.firstName.length > 50) {
+			errors.firstName = 'First name is required and must be <= 50 chars.';
+		}
+		if (!form.lastName || form.lastName.length > 50) {
+			errors.lastName = 'Last name is required and must be <= 50 chars.';
+		}
+		return errors;
+	};
+
 	// Create User form
 	const [userForm, setUserForm] = useState({
 		username: '', email: '', password: '', firstName: '', lastName: ''
@@ -93,23 +118,57 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ token, role }) => {
 				<div className="bg-white border rounded-lg p-4 space-y-3">
 					<h3 className="font-medium">Create Admin</h3>
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-						<input className="border rounded-md px-3 py-2" placeholder="Username" value={adminForm.username} onChange={e=>setAdminForm({...adminForm, username:e.target.value})} />
-						<input className="border rounded-md px-3 py-2" placeholder="Email" value={adminForm.email} onChange={e=>setAdminForm({...adminForm, email:e.target.value})} />
-						<input className="border rounded-md px-3 py-2" placeholder="First name" value={adminForm.firstName} onChange={e=>setAdminForm({...adminForm, firstName:e.target.value})} />
-						<input className="border rounded-md px-3 py-2" placeholder="Last name" value={adminForm.lastName} onChange={e=>setAdminForm({...adminForm, lastName:e.target.value})} />
-						<input className="border rounded-md px-3 py-2 md:col-span-2" placeholder="Password" type="password" value={adminForm.password} onChange={e=>setAdminForm({...adminForm, password:e.target.value})} />
+						<div>
+							<input className={`border rounded-md px-3 py-2 w-full ${adminErrors.username ? 'border-red-500' : ''}`} placeholder="Username" value={adminForm.username} onChange={e=>setAdminForm({...adminForm, username:e.target.value})} />
+							{adminErrors.username && <div className="text-red-600 text-xs mt-1">{adminErrors.username}</div>}
+						</div>
+						<div>
+							<input className={`border rounded-md px-3 py-2 w-full ${adminErrors.email ? 'border-red-500' : ''}`} placeholder="Email" value={adminForm.email} onChange={e=>setAdminForm({...adminForm, email:e.target.value})} />
+							{adminErrors.email && <div className="text-red-600 text-xs mt-1">{adminErrors.email}</div>}
+						</div>
+						<div>
+							<input className={`border rounded-md px-3 py-2 w-full ${adminErrors.firstName ? 'border-red-500' : ''}`} placeholder="First name" value={adminForm.firstName} onChange={e=>setAdminForm({...adminForm, firstName:e.target.value})} />
+							{adminErrors.firstName && <div className="text-red-600 text-xs mt-1">{adminErrors.firstName}</div>}
+						</div>
+						<div>
+							<input className={`border rounded-md px-3 py-2 w-full ${adminErrors.lastName ? 'border-red-500' : ''}`} placeholder="Last name" value={adminForm.lastName} onChange={e=>setAdminForm({...adminForm, lastName:e.target.value})} />
+							{adminErrors.lastName && <div className="text-red-600 text-xs mt-1">{adminErrors.lastName}</div>}
+						</div>
+						<div className="md:col-span-2">
+							<input className={`border rounded-md px-3 py-2 w-full ${adminErrors.password ? 'border-red-500' : ''}`} placeholder="Password" type="password" value={adminForm.password} onChange={e=>setAdminForm({...adminForm, password:e.target.value})} />
+							{adminErrors.password && <div className="text-red-600 text-xs mt-1">{adminErrors.password}</div>}
+						</div>
 					</div>
 					<button
 						className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700"
 						onClick={async ()=>{
 							try {
 								setMessage(null); setError(null);
+								// client-side validation first
+								const localErrors = validateAdminForm(adminForm);
+								if (Object.keys(localErrors).length) {
+									setAdminErrors(localErrors);
+									setError('Please fix the highlighted fields.');
+									return;
+								}
 								const { res, data } = await api('/api/admin/create-admin', { method:'POST', body: JSON.stringify(adminForm) });
 								if (!res.ok || !data?.success) throw new Error(data?.message || 'Failed to create admin');
 								setMessage('Admin created successfully');
 								setAdminForm({ username:'', email:'', password:'', firstName:'', lastName:'' });
+								setAdminErrors({});
 								loadUsers();
-							} catch (e:any) { setError(e.message || 'Failed to create admin'); }
+							} catch (e:any) {
+								// Map server-side validation errors back to fields if present
+								try {
+									const serverErrors = e?.response?.data?.errors || e?.errors || [];
+									if (Array.isArray(serverErrors)) {
+										const mapped: Record<string,string> = {};
+										serverErrors.forEach((er: any) => { if (er?.path && er?.msg) mapped[er.path] = er.msg; });
+										if (Object.keys(mapped).length) setAdminErrors(mapped);
+									}
+								} catch {}
+								setError(e.message || 'Failed to create admin');
+							}
 						}}
 					>
 						Create Admin

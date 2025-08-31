@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Task, Service, Employee } from '../../types';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import { Edit, Eye, UserPlus } from 'lucide-react';
+import { Edit, UserPlus } from 'lucide-react';
 
 interface EnhancedTaskListProps {
   tasks: Task[];
@@ -25,9 +25,14 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
   onTaskDelete
 }) => {
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
+  const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
   const [bulkAssignTo, setBulkAssignTo] = useState('');
 
   const filteredTasks = filter ? tasks.filter(filter) : tasks;
+  
+  // Debug logging
+  console.log('EnhancedTaskList received tasks:', tasks);
+  console.log('Filtered tasks:', filteredTasks);
 
   const getServiceName = (serviceId: string) => {
     const service = services.find(s => s.name === serviceId);
@@ -75,8 +80,29 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
     onTaskUpdate(taskId, { status: newStatus });
   };
 
+  const toggleDetails = (taskId: string) => {
+    console.log('Toggling details for task ID:', taskId);
+    const task = filteredTasks.find(t => t.id === taskId);
+    console.log('Task data:', task);
+    console.log('Current expanded state:', expandedTasks);
+    setExpandedTasks(prev => {
+      const newState = { ...prev, [taskId]: !prev[taskId] };
+      console.log('New expanded state:', newState);
+      return newState;
+    });
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+      {/* TEST BUTTON - REMOVE THIS */}
+      <div style={{background: 'red', color: 'white', padding: '10px', textAlign: 'center'}}>
+        <button 
+          onClick={() => alert('TEST BUTTON WORKS! Component is rendering!')}
+          style={{background: 'yellow', color: 'black', padding: '10px', fontSize: '20px'}}
+        >
+          🧪 TEST BUTTON - CLICK ME!
+        </button>
+      </div>
       <div className="p-6 border-b">
         <div className="flex items-center justify-between">
           <div>
@@ -84,30 +110,48 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
             <p className="text-sm text-gray-600 mt-1">{filteredTasks.length} tasks found</p>
           </div>
           
-          {selectedTasks.length > 0 && (
-            <div className="flex items-center gap-3">
-              <select
-                value={bulkAssignTo}
-                onChange={(e) => setBulkAssignTo(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              >
-                <option value="">Select Employee</option>
-                {employees.map(employee => (
-                  <option key={employee.id} value={employee.name}>
-                    {employee.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={handleBulkAssign}
-                disabled={!bulkAssignTo}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:bg-gray-400 text-sm"
-              >
-                <UserPlus size={16} />
-                Assign ({selectedTasks.length})
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                const map: Record<string, boolean> = {};
+                filteredTasks.forEach(t => { map[t.id] = true; });
+                setExpandedTasks(map);
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-100"
+            >
+              Expand all
+            </button>
+            <button
+              onClick={() => setExpandedTasks({})}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-100"
+            >
+              Collapse all
+            </button>
+            {selectedTasks.length > 0 && (
+              <>
+                <select
+                  value={bulkAssignTo}
+                  onChange={(e) => setBulkAssignTo(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  <option value="">Select Employee</option>
+                  {employees.map(employee => (
+                    <option key={employee.id} value={employee.name}>
+                      {employee.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleBulkAssign}
+                  disabled={!bulkAssignTo}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:bg-gray-400 text-sm"
+                >
+                  <UserPlus size={16} />
+                  Assign ({selectedTasks.length})
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -147,13 +191,17 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                 Assigned To
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Audit
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredTasks.map((task) => (
-              <tr key={task.id} className="hover:bg-gray-50">
+              <React.Fragment key={task.id}>
+              <tr className="hover:bg-gray-50">
                 <td className="px-4 py-4">
                   <input
                     type="checkbox"
@@ -220,21 +268,40 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                     ))}
                   </select>
                 </td>
+                <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
+                  <div>
+                    {(task.createdByName || task.createdById) && (
+                      <div>
+                        Created by: <span className="font-medium">{task.createdByName || task.createdById}</span>
+                      </div>
+                    )}
+                    {(task.updatedByName || task.updatedById) && (task.updatedById !== task.createdById) && (
+                      <div>
+                        Updated by: <span className="font-medium">{task.updatedByName || task.updatedById}</span>
+                      </div>
+                    )}
+                  </div>
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => onTaskEdit(task)}
-                      className="text-blue-600 hover:text-blue-800"
-                      title="Edit Task"
-                    >
-                      <Edit size={16} />
-                    </button>
-                    <button
-                      className="text-gray-600 hover:text-gray-800"
-                      title="View Details"
-                    >
-                      <Eye size={16} />
-                    </button>
+                                         <button
+                       onClick={() => onTaskEdit(task)}
+                       className="text-blue-600 hover:text-blue-800"
+                       title="Edit Task"
+                     >
+                       <Edit size={16} />
+                     </button>
+                     <button
+                       onClick={() => {
+                         console.log('Eye button clicked for task:', task.id, task.customerName);
+                         alert('Eye button clicked! Task: ' + task.customerName);
+                         toggleDetails(task.id);
+                       }}
+                       className="bg-red-500 text-white px-2 py-1 rounded"
+                       title={expandedTasks[task.id] ? 'Hide Details' : 'Show Details'}
+                     >
+                       👁️ EYE
+                     </button>
                     <button
                       onClick={() => onTaskDelete(task.id)}
                       className="text-red-600 hover:text-red-800"
@@ -245,6 +312,48 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                   </div>
                 </td>
               </tr>
+                             {(() => {
+                 const isExpanded = expandedTasks[task.id];
+                 console.log(`Task ${task.id} (${task.customerName}) expanded:`, isExpanded);
+                 return isExpanded;
+               })() && (
+                <tr>
+                  <td className="px-6 py-4 bg-gray-50" colSpan={9}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
+                      <div><span className="font-medium">Serial No:</span> {task.serialNo ? task.serialNo : <span className="text-red-500">No data</span>}</div>
+                      <div><span className="font-medium">Date:</span> {task.date ? formatDate(task.date) : <span className="text-red-500">No data</span>}</div>
+                      <div><span className="font-medium">Service:</span> {task.taskName ? getServiceName(task.taskName) : <span className="text-red-500">No data</span>} {task.taskName && <span className="text-gray-400">({task.taskName})</span>}</div>
+                      <div><span className="font-medium">Customer Name:</span> {task.customerName ? task.customerName : <span className="text-red-500">No data</span>}</div>
+                      <div><span className="font-medium">Customer Type:</span> {task.customerType ? task.customerType : <span className="text-red-500">No data</span>}</div>
+                      <div><span className="font-medium">Service Delivery Date:</span> {task.serviceDeliveryDate ? task.serviceDeliveryDate : <span className="text-red-500">No data</span>}</div>
+                      <div><span className="font-medium">Task Type:</span> {task.taskType ? task.taskType : <span className="text-red-500">No data</span>}</div>
+                      <div><span className="font-medium">Assigned To:</span> {task.assignedTo ? task.assignedTo : <span className="text-red-500">No data</span>}</div>
+                      <div><span className="font-medium">Service Charge:</span> {task.serviceCharge ? formatCurrency(task.serviceCharge) : <span className="text-red-500">No data</span>}</div>
+                      <div><span className="font-medium">Final Charges:</span> {task.finalCharges ? formatCurrency(task.finalCharges) : <span className="text-red-500">No data</span>}</div>
+                      <div><span className="font-medium">Payment Mode:</span> {task.paymentMode ? task.paymentMode : <span className="text-red-500">No data</span>}</div>
+                      <div><span className="font-medium">Payment Remarks:</span> {task.paymentRemarks ? task.paymentRemarks : <span className="text-red-500">No data</span>}</div>
+                      <div><span className="font-medium">Amount Collected:</span> {task.amountCollected ? formatCurrency(task.amountCollected) : <span className="text-red-500">No data</span>}</div>
+                      <div><span className="font-medium">Unpaid Amount:</span> {task.unpaidAmount ? formatCurrency(task.unpaidAmount) : <span className="text-red-500">No data</span>}</div>
+                      <div className="md:col-span-2"><span className="font-medium">Document Details:</span> {task.documentDetails ? task.documentDetails : <span className="text-red-500">No data</span>}</div>
+                      {task.uploadedDocuments && task.uploadedDocuments.length > 0 && (
+                        <div className="md:col-span-2">
+                          <div className="font-medium">Uploaded Documents:</div>
+                          <ul className="list-disc list-inside text-gray-600">
+                            {task.uploadedDocuments.map((doc: { id?: string; name: string; url?: string }, idx: number) => (
+                              <li key={doc.id || idx}>{doc.name}{doc.url ? ` - ${doc.url}` : ''}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      <div className="md:col-span-2"><span className="font-medium">Remarks:</span> {task.remarks ? task.remarks : <span className="text-red-500">No data</span>}</div>
+                      <div><span className="font-medium">Status:</span> {task.status ? task.status : <span className="text-red-500">No data</span>}</div>
+                      <div><span className="font-medium">Created By:</span> {(task.createdByName || task.createdById) ? (task.createdByName || task.createdById) : <span className="text-red-500">No data</span>}</div>
+                      <div><span className="font-medium">Updated By:</span> {(task.updatedByName || task.updatedById) ? (task.updatedByName || task.updatedById) : <span className="text-red-500">No data</span>}</div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>

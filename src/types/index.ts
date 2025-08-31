@@ -59,6 +59,10 @@ export interface Task {
   uploadedDocuments?: UploadedDocument[];
   remarks?: string;
   status: 'pending' | 'ongoing' | 'completed' | 'assigned' | 'unassigned';
+  createdById?: string;
+  updatedById?: string;
+  createdByName?: string;
+  updatedByName?: string;
 }
 
 export interface UploadedDocument {

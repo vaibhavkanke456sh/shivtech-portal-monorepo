@@ -4,7 +4,7 @@ import ClientList from './components/Client/ClientList';
 import Sales from './components/Sales/Sales';
 import type { DashboardEntry } from './components/Sales/Sales';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Sidebar from './components/Layout/Sidebar';
 import AdminPanel from './components/Admin/AdminPanel';
 import Header from './components/Layout/Header';
@@ -13,7 +13,7 @@ import ReportsDashboard from './components/Reports/ReportsDashboard';
 import EnhancedTaskModal from './components/Modals/EnhancedTaskModal';
 // import ClientModal from './components/Modals/ClientModal';
 import TaskOverview from './components/Tasks/TaskOverview';
-import EnhancedTaskList from './components/Tasks/EnhancedTaskList';
+import TaskList from './components/Tasks/TaskList';
 import DeletedTaskList from './components/Tasks/DeletedTaskList';
 import Placeholder from './components/Placeholder';
 import { dashboardData, mockTasks, mockClients } from './data/mockData';
@@ -109,10 +109,28 @@ function App() {
   const [currentPasswordInput, setCurrentPasswordInput] = useState('');
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [otpInput, setOtpInput] = useState('');
+  const sseRef = useRef<EventSource | null>(null);
+  const sseReconnectTimeoutRef = useRef<any>(null);
+  const sseBackoffRef = useRef<number>(1000);
 
-  // Add a new service
-  const handleAddService = (serviceName: string) => {
-    if (!services.some(s => s.name.toLowerCase() === serviceName.toLowerCase())) {
+  // Add a new service (persist)
+  const handleAddService = async (serviceName: string) => {
+    const exists = services.some(s => s.name.toLowerCase() === serviceName.toLowerCase());
+    if (exists) return;
+    try {
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const res = await apiFetch('/api/data/services', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name: serviceName, amount: 0 })
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) throw new Error(json?.message || 'Failed to add service');
+      const s = json.data.service;
+      setServices(prev => [{ id: s._id, name: s.name, amount: s.amount || 0 }, ...prev]);
+    } catch {
+      // fallback local add if backend fails
       setServices(prev => [{ id: Date.now().toString(), name: serviceName, amount: 0 }, ...prev]);
     }
   };
@@ -287,7 +305,9 @@ function App() {
           documentDetails: t.documentDetails || '',
           uploadedDocuments: [],
           remarks: t.remarks || '',
-          status: t.status || 'pending'
+          status: t.status || 'pending',
+          createdById: t.createdBy || '',
+          updatedById: t.updatedBy || ''
         };
         setTasks(prev => prev.map(task => task.id === mapped.id ? mapped : task));
         setEditingTask(null);
@@ -319,7 +339,9 @@ function App() {
           documentDetails: t.documentDetails || '',
           uploadedDocuments: [],
           remarks: t.remarks || '',
-          status: t.status || 'pending'
+          status: t.status || 'pending',
+          createdById: t.createdBy || '',
+          updatedById: t.updatedBy || ''
         };
         setTasks(prev => [mapped, ...prev]);
         // If new customer, ensure a client exists
@@ -435,14 +457,16 @@ function App() {
           setLoginType(role === 'web_developer' ? 'developer' : role);
           try {
             const headers: any = { Authorization: `Bearer ${token}` };
-            const [clientsRes, tasksRes, fundRes] = await Promise.all([
+            const [clientsRes, tasksRes, fundRes, servicesRes] = await Promise.all([
               apiFetch('/api/data/clients', { headers }),
               apiFetch('/api/data/tasks', { headers }),
-              apiFetch('/api/data/fund-transfers', { headers })
+              apiFetch('/api/data/fund-transfers', { headers }),
+              apiFetch('/api/data/services', { headers })
             ]);
             const clientsJson = await clientsRes.json();
             const tasksJson = await tasksRes.json();
             const fundJson = await fundRes.json();
+            const servicesJson = await servicesRes.json();
             const mapClient = (c: any): Client => ({ id: c._id, name: c.name, phone: c.phone || '', createdAt: new Date(c.createdAt).toISOString().split('T')[0] });
             const mapTask = (t: any): Task => ({
               id: t._id,
@@ -461,12 +485,17 @@ function App() {
               amountCollected: t.amountCollected || 0,
               unpaidAmount: t.unpaidAmount || 0,
               documentDetails: t.documentDetails || '',
-              uploadedDocuments: [],
+              uploadedDocuments: t.uploadedDocuments || [],
               remarks: t.remarks || '',
-              status: t.status || 'pending'
+              status: t.status || 'pending',
+              createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
+              updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
+              createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
+              updatedByName: typeof t.updatedBy === 'object' ? (t.updatedBy?.username || t.updatedBy?.email || '') : ''
             });
             if (clientsJson?.success) setClients((clientsJson.data.clients || []).map(mapClient));
             if (tasksJson?.success) setTasks((tasksJson.data.tasks || []).map(mapTask));
+            if (servicesJson?.success) setServices((servicesJson.data.services || []).map((s:any)=>({ id: s._id, name: s.name, amount: s.amount || 0 })));
             if (fundJson?.success) {
               const entries = (fundJson.data.entries || []) as any[];
               const mappedEntries: DashboardEntry[] = entries.map((e: any) => ({
@@ -489,12 +518,268 @@ function App() {
               setDashboardEntries(mappedEntries);
             }
           } catch {}
+
+          // Start realtime subscription via SSE
+          const startSSE = (tk: string) => {
+            if (sseRef.current) {
+              try { sseRef.current.close(); } catch {}
+              sseRef.current = null;
+            }
+            const ev = new EventSource(`${(import.meta as any).env?.VITE_API_URL || 'http://localhost:5000'}/api/data/realtime/tasks?token=${tk}`);
+            sseRef.current = ev;
+            ev.onmessage = (msg) => {
+              try {
+                const payload = JSON.parse(msg.data);
+                if (payload.type === 'task_created' && payload.task) {
+                  const t = payload.task;
+                  const mapped: Task = {
+                    id: t._id,
+                    serialNo: t.serialNo || '',
+                    date: t.date,
+                    taskName: t.taskName,
+                    customerName: t.customerName,
+                    customerType: t.customerType,
+                    serviceDeliveryDate: t.serviceDeliveryDate || '',
+                    taskType: t.taskType,
+                    assignedTo: t.assignedTo || '',
+                    serviceCharge: t.serviceCharge || 0,
+                    finalCharges: t.finalCharges || 0,
+                    paymentMode: t.paymentMode || 'cash',
+                    paymentRemarks: t.paymentRemarks || '',
+                    amountCollected: t.amountCollected || 0,
+                    unpaidAmount: t.unpaidAmount || 0,
+                    documentDetails: t.documentDetails || '',
+                    uploadedDocuments: t.uploadedDocuments || [],
+                    remarks: t.remarks || '',
+                    status: t.status || 'pending',
+                    createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
+                    updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
+                    createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
+                    updatedByName: typeof t.updatedBy === 'object' ? (t.updatedBy?.username || t.updatedBy?.email || '') : ''
+                  };
+                  setTasks(prev => {
+                    if (prev.some(x => x.id === mapped.id)) return prev;
+                    return [mapped, ...prev];
+                  });
+                }
+                if (payload.type === 'task_updated' && payload.task) {
+                  const t = payload.task;
+                  const mapped: Task = {
+                    id: t._id,
+                    serialNo: t.serialNo || '',
+                    date: t.date,
+                    taskName: t.taskName,
+                    customerName: t.customerName,
+                    customerType: t.customerType,
+                    serviceDeliveryDate: t.serviceDeliveryDate || '',
+                    taskType: t.taskType,
+                    assignedTo: t.assignedTo || '',
+                    serviceCharge: t.serviceCharge || 0,
+                    finalCharges: t.finalCharges || 0,
+                    paymentMode: t.paymentMode || 'cash',
+                    paymentRemarks: t.paymentRemarks || '',
+                    amountCollected: t.amountCollected || 0,
+                    unpaidAmount: t.unpaidAmount || 0,
+                    documentDetails: t.documentDetails || '',
+                    uploadedDocuments: t.uploadedDocuments || [],
+                    remarks: t.remarks || '',
+                    status: t.status || 'pending',
+                    createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
+                    updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
+                    createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
+                    updatedByName: typeof t.updatedBy === 'object' ? (t.updatedBy?.username || t.updatedBy?.email || '') : ''
+                  };
+                  setTasks(prev => prev.map(x => x.id === mapped.id ? mapped : x));
+                }
+                if (payload.type === 'task_deleted' && payload.id) {
+                  setTasks(prev => prev.filter(x => x.id !== payload.id));
+                }
+              } catch {}
+            };
+            ev.onerror = () => {
+              try { ev.close(); } catch {}
+              sseRef.current = null;
+              // backoff reconnect
+              const delay = sseBackoffRef.current;
+              sseBackoffRef.current = Math.min(delay * 2, 30000);
+              clearTimeout(sseReconnectTimeoutRef.current);
+              sseReconnectTimeoutRef.current = setTimeout(() => startSSE(tk), delay);
+            };
+            // reset backoff once open message/comment received
+            ev.onopen = () => {
+              sseBackoffRef.current = 1000;
+            };
+          };
+          try { startSSE(token); } catch {}
         }
       } catch (e) {
         // ignore
       }
     })();
   }, []);
+
+  // Load initial data after interactive login when authToken becomes available
+  useEffect(() => {
+    if (!authToken || !isLoggedIn) return;
+    (async () => {
+      try {
+        const headers: any = { Authorization: `Bearer ${authToken}` };
+        const [clientsRes, tasksRes, fundRes, servicesRes] = await Promise.all([
+          apiFetch('/api/data/clients', { headers }),
+          apiFetch('/api/data/tasks', { headers }),
+          apiFetch('/api/data/fund-transfers', { headers }),
+          apiFetch('/api/data/services', { headers })
+        ]);
+        const clientsJson = await clientsRes.json().catch(() => ({} as any));
+        const tasksJson = await tasksRes.json().catch(() => ({} as any));
+        const fundJson = await fundRes.json().catch(() => ({} as any));
+        const servicesJson = await servicesRes.json().catch(() => ({} as any));
+        const mapClient = (c: any): Client => ({ id: c._id, name: c.name, phone: c.phone || '', createdAt: new Date(c.createdAt).toISOString().split('T')[0] });
+        const mapTask = (t: any): Task => ({
+          id: t._id,
+          serialNo: t.serialNo || '',
+          date: t.date,
+          taskName: t.taskName,
+          customerName: t.customerName,
+          customerType: t.customerType,
+          serviceDeliveryDate: t.serviceDeliveryDate || '',
+          taskType: t.taskType,
+          assignedTo: t.assignedTo || '',
+          serviceCharge: t.serviceCharge || 0,
+          finalCharges: t.finalCharges || 0,
+          paymentMode: t.paymentMode || 'cash',
+          paymentRemarks: t.paymentRemarks || '',
+          amountCollected: t.amountCollected || 0,
+          unpaidAmount: t.unpaidAmount || 0,
+          documentDetails: t.documentDetails || '',
+          uploadedDocuments: t.uploadedDocuments || [],
+          remarks: t.remarks || '',
+          status: t.status || 'pending',
+          createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
+          updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
+          createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
+          updatedByName: typeof t.updatedBy === 'object' ? (t.updatedBy?.username || t.updatedBy?.email || '') : ''
+        });
+        if (clientsJson?.success) setClients((clientsJson.data.clients || []).map(mapClient));
+        if (tasksJson?.success) {
+          const loadedTasks = (tasksJson.data.tasks || []).map(mapTask);
+          console.log('Loaded tasks from database:', loadedTasks);
+          setTasks(loadedTasks);
+        }
+        if (servicesJson?.success) setServices((servicesJson.data.services || []).map((s:any)=>({ id: s._id, name: s.name, amount: s.amount || 0 })));
+        if (fundJson?.success) {
+          const entries = (fundJson.data.entries || []) as any[];
+          const mappedEntries: DashboardEntry[] = entries.map((e: any) => ({
+            type: 'ADD FUND TRANSFER ENTRY',
+            customerName: e.customerName,
+            customerNumber: e.customerNumber,
+            beneficiaryName: e.beneficiaryName,
+            beneficiaryNumber: e.beneficiaryNumber,
+            applicationName: e.applicationName,
+            transferredFrom: e.transferredFrom,
+            transferredFromRemark: e.transferredFromRemark || '',
+            amount: String(e.amount ?? ''),
+            cashReceived: e.cashReceived,
+            addedInGala: e.addedInGala,
+            addedInGalaRemark: e.addedInGalaRemark || '',
+            commissionType: e.commissionType,
+            commissionAmount: String(e.commissionAmount ?? ''),
+            commissionRemark: e.commissionRemark || ''
+          }));
+          setDashboardEntries(mappedEntries);
+        }
+      } catch {}
+
+      // Start realtime subscription via SSE for interactive login path too
+      const startSSE = (tk: string) => {
+        if (sseRef.current) {
+          try { sseRef.current.close(); } catch {}
+          sseRef.current = null;
+        }
+        const ev = new EventSource(`${(import.meta as any).env?.VITE_API_URL || 'http://localhost:5000'}/api/data/realtime/tasks?token=${tk}`);
+        sseRef.current = ev;
+        ev.onmessage = (msg) => {
+          try {
+            const payload = JSON.parse(msg.data);
+            if (payload.type === 'task_created' && payload.task) {
+              const t = payload.task;
+              const mapped: Task = {
+                id: t._id,
+                serialNo: t.serialNo || '',
+                date: t.date,
+                taskName: t.taskName,
+                customerName: t.customerName,
+                customerType: t.customerType,
+                serviceDeliveryDate: t.serviceDeliveryDate || '',
+                taskType: t.taskType,
+                assignedTo: t.assignedTo || '',
+                serviceCharge: t.serviceCharge || 0,
+                finalCharges: t.finalCharges || 0,
+                paymentMode: t.paymentMode || 'cash',
+                paymentRemarks: t.paymentRemarks || '',
+                amountCollected: t.amountCollected || 0,
+                unpaidAmount: t.unpaidAmount || 0,
+                documentDetails: t.documentDetails || '',
+                uploadedDocuments: t.uploadedDocuments || [],
+                remarks: t.remarks || '',
+                status: t.status || 'pending',
+                createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
+                updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
+                createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
+                updatedByName: typeof t.updatedBy === 'object' ? (t.updatedBy?.username || t.updatedBy?.email || '') : ''
+              };
+              setTasks(prev => {
+                if (prev.some(x => x.id === mapped.id)) return prev;
+                return [mapped, ...prev];
+              });
+            }
+            if (payload.type === 'task_updated' && payload.task) {
+              const t = payload.task;
+              const mapped: Task = {
+                id: t._id,
+                serialNo: t.serialNo || '',
+                date: t.date,
+                taskName: t.taskName,
+                customerName: t.customerName,
+                customerType: t.customerType,
+                serviceDeliveryDate: t.serviceDeliveryDate || '',
+                taskType: t.taskType,
+                assignedTo: t.assignedTo || '',
+                serviceCharge: t.serviceCharge || 0,
+                finalCharges: t.finalCharges || 0,
+                paymentMode: t.paymentMode || 'cash',
+                paymentRemarks: t.paymentRemarks || '',
+                amountCollected: t.amountCollected || 0,
+                unpaidAmount: t.unpaidAmount || 0,
+                documentDetails: t.documentDetails || '',
+                uploadedDocuments: t.uploadedDocuments || [],
+                remarks: t.remarks || '',
+                status: t.status || 'pending',
+                createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
+                updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
+                createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
+                updatedByName: typeof t.updatedBy === 'object' ? (t.updatedBy?.username || t.updatedBy?.email || '') : ''
+              };
+              setTasks(prev => prev.map(x => x.id === mapped.id ? mapped : x));
+            }
+            if (payload.type === 'task_deleted' && payload.id) {
+              setTasks(prev => prev.filter(x => x.id !== payload.id));
+            }
+          } catch {}
+        };
+        ev.onerror = () => {
+          try { ev.close(); } catch {}
+          sseRef.current = null;
+          const delay = sseBackoffRef.current;
+          sseBackoffRef.current = Math.min(delay * 2, 30000);
+          clearTimeout(sseReconnectTimeoutRef.current);
+          sseReconnectTimeoutRef.current = setTimeout(() => startSSE(tk), delay);
+        };
+        ev.onopen = () => { sseBackoffRef.current = 1000; };
+      };
+      try { startSSE(authToken); } catch {}
+    })();
+  }, [authToken, isLoggedIn]);
 
   // Detect reset token in URL and show reset form
   useEffect(() => {
@@ -659,14 +944,10 @@ function App() {
             >
               Add New Client
             </button>
-            <EnhancedTaskList 
+            <TaskList 
               tasks={tasks} 
               services={services}
-              employees={employees}
               title="Recent Tasks"
-              onTaskUpdate={handleTaskUpdate}
-              onTaskEdit={handleTaskEdit}
-              onTaskDelete={handleTaskDelete}
             />
           </div>
         );
@@ -687,15 +968,11 @@ function App() {
             >
               Add New Client
             </button>
-            <EnhancedTaskList 
+            <TaskList 
               tasks={tasks} 
               services={services}
-              employees={employees}
               title={taskFilter === 'all' ? 'All Tasks' : `Filtered Tasks (${taskFilter})`}
               filter={getTaskFilter(taskFilter)}
-              onTaskUpdate={handleTaskUpdate}
-              onTaskEdit={handleTaskEdit}
-              onTaskDelete={handleTaskDelete}
             />
           </div>
         );

@@ -23,3 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 .env
+backend/
+node_modules/
+dist/
+.env
+.DS_Store
