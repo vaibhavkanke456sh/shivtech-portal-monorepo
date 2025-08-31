@@ -6,6 +6,7 @@ import MetricCard from './MetricCard';
 import ChartCard from './ChartCard';
 import { DashboardData } from '../../types';
 
+// Dashboard component with latest updates
 interface DashboardProps {
   data: DashboardData;
   onAddTask: () => void;
