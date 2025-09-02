@@ -41,12 +41,20 @@ const DeletedTaskList: React.FC<Props> = ({ token }) => {
       setError(null);
       // optimistic UI: remove from list immediately
       setTasks(prev => prev.filter(t => t._id !== taskId));
-      const res = await apiFetch(`/api/data/tasks/${taskId}/restore`, {
+      let res = await apiFetch(`/api/data/tasks/${taskId}/restore`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
       });
-      const json = await res.json();
-      if (!res.ok || !json?.success) throw new Error(json?.message || 'Failed to restore task');
+      if (res.status === 404) {
+        // Fallback for older backend: use generic update route to clear deletion flags
+        res = await apiFetch(`/api/data/tasks/${taskId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ isDeleted: false, deletedAt: null })
+        });
+      }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.success === false) throw new Error(json?.message || 'Failed to restore task');
     } catch (e: unknown) {
       const message = typeof e === 'object' && e && 'message' in e ? String((e as { message?: string }).message || '') : '';
       setError(message);
