@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Task, Service, Employee } from '../../types';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import { Edit, UserPlus } from 'lucide-react';
+import { Edit, UserPlus, Eye } from 'lucide-react';
 
 interface EnhancedTaskListProps {
   tasks: Task[];
@@ -94,15 +94,6 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-      {/* TEST BUTTON - REMOVE THIS */}
-      <div style={{background: 'red', color: 'white', padding: '10px', textAlign: 'center'}}>
-        <button 
-          onClick={() => alert('TEST BUTTON WORKS! Component is rendering!')}
-          style={{background: 'yellow', color: 'black', padding: '10px', fontSize: '20px'}}
-        >
-          🧪 TEST BUTTON - CLICK ME!
-        </button>
-      </div>
       <div className="p-6 border-b">
         <div className="flex items-center justify-between">
           <div>
@@ -294,14 +285,13 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                      <button
                        onClick={() => {
                          console.log('Eye button clicked for task:', task.id, task.customerName);
-                         alert('Eye button clicked! Task: ' + task.customerName);
                          toggleDetails(task.id);
                        }}
                        className="bg-red-500 text-white px-2 py-1 rounded"
                        title={expandedTasks[task.id] ? 'Hide Details' : 'Show Details'}
                      >
-                       👁️ EYE
-                     </button>
+                      <Eye size={16} />
+                    </button>
                     <button
                       onClick={() => onTaskDelete(task.id)}
                       className="text-red-600 hover:text-red-800"

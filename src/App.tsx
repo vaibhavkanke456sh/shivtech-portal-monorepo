@@ -14,6 +14,7 @@ import EnhancedTaskModal from './components/Modals/EnhancedTaskModal';
 // import ClientModal from './components/Modals/ClientModal';
 import TaskOverview from './components/Tasks/TaskOverview';
 import TaskList from './components/Tasks/TaskList';
+import EnhancedTaskList from './components/Tasks/EnhancedTaskList';
 import DeletedTaskList from './components/Tasks/DeletedTaskList';
 import Placeholder from './components/Placeholder';
 import { dashboardData, mockTasks, mockClients } from './data/mockData';
@@ -944,10 +945,14 @@ function App() {
             >
               Add New Client
             </button>
-            <TaskList 
-              tasks={tasks} 
+            <EnhancedTaskList 
+              tasks={tasks}
               services={services}
+              employees={employees}
               title="Recent Tasks"
+              onTaskUpdate={handleTaskUpdate}
+              onTaskEdit={handleTaskEdit}
+              onTaskDelete={handleTaskDelete}
             />
           </div>
         );
@@ -968,11 +973,15 @@ function App() {
             >
               Add New Client
             </button>
-            <TaskList 
-              tasks={tasks} 
+            <EnhancedTaskList 
+              tasks={tasks}
               services={services}
+              employees={employees}
               title={taskFilter === 'all' ? 'All Tasks' : `Filtered Tasks (${taskFilter})`}
               filter={getTaskFilter(taskFilter)}
+              onTaskUpdate={handleTaskUpdate}
+              onTaskEdit={handleTaskEdit}
+              onTaskDelete={handleTaskDelete}
             />
           </div>
         );
