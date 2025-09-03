@@ -254,11 +254,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, services
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
               >
                 <option value="">Select Staff</option>
-                <option value="Admin">Admin</option>
-                <option value="Staff1">Staff1</option>
-                <option value="Staff2">Staff2</option>
-                <option value="Staff3">Staff3</option>
-                <option value="Staff4">Staff4</option>
+                <option value="vaibhav">vaibhav</option>
+                <option value="omkar">omkar</option>
               </select>
             </div>
 

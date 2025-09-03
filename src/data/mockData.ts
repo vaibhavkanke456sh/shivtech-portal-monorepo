@@ -38,11 +38,8 @@ export const dashboardData: DashboardData = {
     { id: 'srv_pan', name: 'PAN Card', amount: 150 }
   ],
   employees: [
-    { id: 'emp_admin', name: 'Admin' },
-    { id: 'emp_staff1', name: 'Staff 1' },
-    { id: 'emp_staff2', name: 'Staff 2' },
-    { id: 'emp_staff3', name: 'Staff 3' },
-    { id: 'emp_staff4', name: 'Staff 4' }
+    { id: 'emp_vaibhav', name: 'vaibhav' },
+    { id: 'emp_omkar', name: 'omkar' }
   ],
   savedTasks: [
     'Mobile Recharge',
