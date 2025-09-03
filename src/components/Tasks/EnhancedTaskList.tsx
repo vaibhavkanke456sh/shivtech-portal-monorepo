@@ -27,8 +27,25 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
   const [bulkAssignTo, setBulkAssignTo] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
+  const [assignedToFilter, setAssignedToFilter] = useState('');
 
-  const filteredTasks = filter ? tasks.filter(filter) : tasks;
+  // Apply base filter first, then date and assignedTo filters
+  let filteredTasks = filter ? tasks.filter(filter) : tasks;
+  
+  // Apply date filter
+  if (dateFilter) {
+    filteredTasks = filteredTasks.filter(task => task.date === dateFilter);
+  }
+  
+  // Apply assigned to filter
+  if (assignedToFilter) {
+    if (assignedToFilter === 'unassigned') {
+      filteredTasks = filteredTasks.filter(task => !task.assignedTo || task.assignedTo === '');
+    } else {
+      filteredTasks = filteredTasks.filter(task => task.assignedTo === assignedToFilter);
+    }
+  }
   
   // Debug logging
   console.log('EnhancedTaskList received tasks:', tasks);
@@ -95,13 +112,53 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200">
       <div className="p-6 border-b">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-xl font-semibold text-gray-800">{title}</h2>
             <p className="text-sm text-gray-600 mt-1">{filteredTasks.length} tasks found</p>
           </div>
           
+          {/* Filters */}
           <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">Date:</label>
+              <input
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              />
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">Assigned To:</label>
+              <select
+                value={assignedToFilter}
+                onChange={(e) => setAssignedToFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              >
+                <option value="">All</option>
+                <option value="unassigned">Unassigned</option>
+                <option value="vaibhav">vaibhav</option>
+                <option value="omkar">omkar</option>
+              </select>
+            </div>
+            
+            {(dateFilter || assignedToFilter) && (
+              <button
+                onClick={() => {
+                  setDateFilter('');
+                  setAssignedToFilter('');
+                }}
+                className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200"
+              >
+                Clear Filters
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
             <button
               onClick={() => {
                 const map: Record<string, boolean> = {};
