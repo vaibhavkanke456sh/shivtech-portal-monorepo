@@ -1,0 +1,1 @@
+* [32mmain[m 34655eb [[34morigin/main[m] fix(tasks): add frontend fallback restore via PUT /api/data/tasks/:id when /restore route is missing on older backend

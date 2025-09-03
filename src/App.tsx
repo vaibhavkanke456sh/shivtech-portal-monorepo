@@ -17,6 +17,7 @@ import TaskList from './components/Tasks/TaskList';
 import EnhancedTaskList from './components/Tasks/EnhancedTaskList';
 import DeletedTaskList from './components/Tasks/DeletedTaskList';
 import Placeholder from './components/Placeholder';
+import Tools from './components/Tools/Tools';
 import { dashboardData, mockTasks, mockClients } from './data/mockData';
 import { Task, Client } from './types';
 import { apiFetch } from './utils/api';
@@ -926,6 +927,10 @@ function App() {
       case 'report':
         return (
           <ReportsDashboard token={authToken || ''} role={loginType} />
+        );
+      case 'tools':
+        return (
+          <Tools />
         );
       case 'task-add':
         return (
