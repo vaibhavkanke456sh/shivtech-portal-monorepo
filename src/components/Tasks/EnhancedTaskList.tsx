@@ -243,21 +243,25 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                   </select>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <select
-                    value={task.assignedTo || ''}
-                    onChange={(e) => onTaskUpdate(task.id, { 
-                      assignedTo: e.target.value || undefined,
-                      status: e.target.value ? 'assigned' : 'unassigned'
-                    })}
-                    className="text-sm border border-gray-300 rounded px-2 py-1"
-                  >
-                    <option value="">Unassigned</option>
-                    {employees.map(employee => (
-                      <option key={employee.id} value={employee.name}>
-                        {employee.name}
-                      </option>
-                    ))}
-                  </select>
+                  {task.status === 'unassigned' ? (
+                    <span className="text-sm text-gray-500">Unassigned</span>
+                  ) : (
+                    <select
+                      value={task.assignedTo || ''}
+                      onChange={(e) => onTaskUpdate(task.id, { 
+                        assignedTo: e.target.value || undefined,
+                        status: e.target.value ? 'assigned' : 'unassigned'
+                      })}
+                      className="text-sm border border-gray-300 rounded px-2 py-1"
+                    >
+                      <option value="">Unassigned</option>
+                      {employees.map(employee => (
+                        <option key={employee.id} value={employee.name}>
+                          {employee.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
                   <div>
