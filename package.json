@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "start": "node backend/server.js",
-    "build": "npm install --prefix backend",
+    "build": "npm run build:backend",
     "dev": "vite",
     "lint": "eslint .",
     "preview": "vite preview",
