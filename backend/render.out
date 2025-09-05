@@ -1,0 +1,16 @@
+
+> dsam-portal-backend@1.0.0 start
+> node server.js
+
+🚀 Server running in production mode on port 5052
+📊 Health check: http://localhost:5052/health
+🔐 Auth endpoints: http://localhost:5052/api/auth
+👨‍💼 Admin endpoints: http://localhost:5052/api/admin
+✅ MongoDB connected successfully!
+2025-08-18T14:37:42.455Z - GET /health
+MongoDB reconnected
+MongoDB reconnected
+MongoDB disconnected
+MongoDB reconnected
+MongoDB disconnected
+MongoDB reconnected

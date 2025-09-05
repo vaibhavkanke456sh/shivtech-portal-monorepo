@@ -1,0 +1,9 @@
+
+> dsam-portal-backend@1.0.0 start
+> node server.js
+
+🚀 Server running in production mode on port 5000
+📊 Health check: http://localhost:5000/health
+🔐 Auth endpoints: http://localhost:5000/api/auth
+👨‍💼 Admin endpoints: http://localhost:5000/api/admin
+✅ MongoDB connected successfully!

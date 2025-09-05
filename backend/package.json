@@ -1,0 +1,40 @@
+{
+  "name": "dsam-portal-backend",
+  "version": "1.0.0",
+  "description": "Backend for DSAM Portal with authentication for users, admins, and web developers",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "seed": "node scripts/seedData.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "express-validator": "^7.0.1",
+    "mongoose": "^8.0.3",
+    "nodemailer": "^6.9.7",
+    "crypto": "^1.0.1",
+    "mongodb-memory-server": "^10.1.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "keywords": [
+    "authentication",
+    "login",
+    "dsam",
+    "portal",
+    "express",
+    "nodejs"
+  ],
+  "author": "ShivTech",
+  "license": "MIT"
+}
