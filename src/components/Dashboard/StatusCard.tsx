@@ -5,9 +5,10 @@ interface StatusCardProps {
   label: string;
   value: number;
   important?: boolean;
+  onClick?: () => void;
 }
 
-const StatusCard: React.FC<StatusCardProps> = ({ code, label, value, important = false }) => {
+const StatusCard: React.FC<StatusCardProps> = ({ code, label, value, important = false, onClick }) => {
   const getCardStyle = () => {
     if (important) return 'bg-red-500 text-white';
     if (code === 'SDT') return 'bg-emerald-500 text-white'; // Service Delivered gets green background
@@ -15,7 +16,10 @@ const StatusCard: React.FC<StatusCardProps> = ({ code, label, value, important =
   };
 
   return (
-    <div className={`p-4 rounded-xl text-center shadow-sm transition-transform hover:scale-105 ${getCardStyle()}`}>
+    <div 
+      className={`p-4 rounded-xl text-center shadow-sm transition-transform hover:scale-105 cursor-pointer ${getCardStyle()}`}
+      onClick={onClick}
+    >
       <div className="text-sm font-medium opacity-90">{code}</div>
       <div className="text-2xl font-bold my-1">{value}</div>
       <div className="text-xs opacity-75">{label}</div>

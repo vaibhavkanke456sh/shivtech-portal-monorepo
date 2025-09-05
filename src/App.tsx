@@ -810,12 +810,14 @@ function App() {
         return (task: Task) => task.status === 'ongoing';
       case 'completed':
         return (task: Task) => task.status === 'completed';
+      case 'service-delivered':
+        return (task: Task) => task.status === 'service-delivered';
       case 'do-now':
         return (task: Task) => task.taskType === 'do-now' && task.status !== 'completed';
       case 'urgent':
         return (task: Task) => task.taskType === 'urgent' && task.status !== 'completed';
       case 'delivered':
-        return (task: Task) => task.status === 'completed';
+        return (task: Task) => task.status === 'service-delivered';
       default:
         return undefined;
     }
@@ -823,6 +825,12 @@ function App() {
 
   // Unify all add client actions to ClientList
   const [showAddClientModal, setShowAddClientModal] = useState(false);
+  
+  // Handle status card clicks to redirect to task list
+  const handleStatusCardClick = (status: string) => {
+    setActiveScreen('tasks');
+    setTaskFilter(status);
+  };
   const renderScreen = () => {
     switch (activeScreen) {
       case 'account':
@@ -918,6 +926,7 @@ function App() {
               setActiveScreen('client');
               setShowAddClientModal(true);
             }}
+            onStatusCardClick={handleStatusCardClick}
           />
         );
       case 'sales':

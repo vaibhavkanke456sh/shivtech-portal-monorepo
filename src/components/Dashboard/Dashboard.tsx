@@ -11,9 +11,10 @@ interface DashboardProps {
   data: DashboardData;
   onAddTask: () => void;
   onAddClient?: () => void;
+  onStatusCardClick?: (status: string) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ data, onAddTask, onAddClient }) => {
+const Dashboard: React.FC<DashboardProps> = ({ data, onAddTask, onAddClient, onStatusCardClick }) => {
   const mobileBalanceItems = [
     { label: 'Airtel ID', amount: data.mobileBalances.airtel },
     { label: 'Jio ID', amount: data.mobileBalances.jio },
@@ -56,13 +57,49 @@ const Dashboard: React.FC<DashboardProps> = ({ data, onAddTask, onAddClient }) =
       <div className="xl:col-span-3 space-y-6">
         {/* Status Cards */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
-          <StatusCard code="UAT" label="Unassigned Tasks" value={data.statusCounts.UAT} />
-          <StatusCard code="AST" label="Assigned Tasks" value={data.statusCounts.AST} />
-          <StatusCard code="OGT" label="Ongoing Tasks" value={data.statusCounts.OGT} />
-          <StatusCard code="CTT" label="Completed Tasks" value={data.statusCounts.CTT} />
-          <StatusCard code="IMT" label="Do Now Tasks" value={data.statusCounts.IMT} important />
-          <StatusCard code="URT" label="Urgent Tasks" value={data.statusCounts.URT} />
-          <StatusCard code="SDT" label="Service Delivered" value={data.statusCounts.SDT} />
+          <StatusCard 
+            code="UAT" 
+            label="Unassigned Tasks" 
+            value={data.statusCounts.UAT} 
+            onClick={() => onStatusCardClick?.('unassigned')}
+          />
+          <StatusCard 
+            code="AST" 
+            label="Assigned Tasks" 
+            value={data.statusCounts.AST} 
+            onClick={() => onStatusCardClick?.('assigned')}
+          />
+          <StatusCard 
+            code="OGT" 
+            label="Ongoing Tasks" 
+            value={data.statusCounts.OGT} 
+            onClick={() => onStatusCardClick?.('ongoing')}
+          />
+          <StatusCard 
+            code="CTT" 
+            label="Completed Tasks" 
+            value={data.statusCounts.CTT} 
+            onClick={() => onStatusCardClick?.('completed')}
+          />
+          <StatusCard 
+            code="IMT" 
+            label="Do Now Tasks" 
+            value={data.statusCounts.IMT} 
+            important 
+            onClick={() => onStatusCardClick?.('do-now')}
+          />
+          <StatusCard 
+            code="URT" 
+            label="Urgent Tasks" 
+            value={data.statusCounts.URT} 
+            onClick={() => onStatusCardClick?.('urgent')}
+          />
+          <StatusCard 
+            code="SDT" 
+            label="Service Delivered" 
+            value={data.statusCounts.SDT} 
+            onClick={() => onStatusCardClick?.('service-delivered')}
+          />
         </div>
 
         {/* Balance Sections */}
