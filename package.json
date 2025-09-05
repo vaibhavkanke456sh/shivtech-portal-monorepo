@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "start": "node backend/server.js",
-    "build": "npm run build:backend",
+    "build": "vite build",
     "dev": "vite",
     "lint": "eslint .",
     "preview": "vite preview",
