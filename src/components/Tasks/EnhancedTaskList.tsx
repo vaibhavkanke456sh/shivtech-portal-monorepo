@@ -27,15 +27,29 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
   const [bulkAssignTo, setBulkAssignTo] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
+  const [fromDateFilter, setFromDateFilter] = useState('');
+  const [toDateFilter, setToDateFilter] = useState('');
   const [assignedToFilter, setAssignedToFilter] = useState('');
 
   // Apply base filter first, then date and assignedTo filters
   let filteredTasks = filter ? tasks.filter(filter) : tasks;
   
-  // Apply date filter
-  if (dateFilter) {
-    filteredTasks = filteredTasks.filter(task => task.date === dateFilter);
+  // Apply date range filter
+  if (fromDateFilter || toDateFilter) {
+    filteredTasks = filteredTasks.filter(task => {
+      const taskDate = new Date(task.date);
+      const fromDate = fromDateFilter ? new Date(fromDateFilter) : null;
+      const toDate = toDateFilter ? new Date(toDateFilter) : null;
+      
+      if (fromDate && toDate) {
+        return taskDate >= fromDate && taskDate <= toDate;
+      } else if (fromDate) {
+        return taskDate >= fromDate;
+      } else if (toDate) {
+        return taskDate <= toDate;
+      }
+      return true;
+    });
   }
   
   // Apply assigned to filter
@@ -121,11 +135,21 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
           {/* Filters */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">Date:</label>
+              <label className="text-sm font-medium text-gray-700">From Date:</label>
               <input
                 type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
+                value={fromDateFilter}
+                onChange={(e) => setFromDateFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              />
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">To Date:</label>
+              <input
+                type="date"
+                value={toDateFilter}
+                onChange={(e) => setToDateFilter(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
               />
             </div>
@@ -144,10 +168,11 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
               </select>
             </div>
             
-            {(dateFilter || assignedToFilter) && (
+            {(fromDateFilter || toDateFilter || assignedToFilter) && (
               <button
                 onClick={() => {
-                  setDateFilter('');
+                  setFromDateFilter('');
+                  setToDateFilter('');
                   setAssignedToFilter('');
                 }}
                 className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200"
