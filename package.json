@@ -8,7 +8,6 @@
     "backend"
   ],
   "scripts": {
-    "start": "node backend/server.js",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
