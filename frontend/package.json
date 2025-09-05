@@ -1,22 +1,13 @@
 {
-  "name": "shivtech-portal-monorepo",
+  "name": "shivtech-portal-frontend",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "workspaces": [
-    "frontend",
-    "backend"
-  ],
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "dev:frontend": "cd frontend && npm run dev",
-    "dev:backend": "cd backend && npm run dev",
-    "build:frontend": "cd frontend && npm run build",
-    "build:backend": "cd backend && npm run build",
-    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install"
+    "preview": "vite preview"
   },
   "dependencies": {
     "lucide-react": "^0.344.0",
