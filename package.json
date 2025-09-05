@@ -8,8 +8,9 @@
     "backend"
   ],
   "scripts": {
+    "start": "node backend/server.js",
+    "build": "npm install --prefix backend",
     "dev": "vite",
-    "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "dev:frontend": "cd frontend && npm run dev",
