@@ -83,7 +83,7 @@ function App() {
 
 
   // Dynamic services and employees
-  const [services, setServices] = useState(dashboardData.services);
+  const [services, setServices] = useState<Service[]>([]);
   const [employees, setEmployees] = useState(dashboardData.employees);
   const [activeScreen, setActiveScreen] = useState('dashboard');
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -190,7 +190,7 @@ function App() {
       ongoing: tasks.filter(t => t.status === 'ongoing').length,
       assigned: tasks.filter(t => t.status === 'assigned').length,
       unassigned: tasks.filter(t => t.status === 'unassigned').length,
-      PDT: tasks.filter(t => t.status === 'pending').length,
+      SDT: tasks.filter(t => t.status === 'service-delivered').length,
       CTT: tasks.filter(t => t.status === 'completed').length,
       OGT: tasks.filter(t => t.status === 'ongoing').length,
       AST: tasks.filter(t => t.status === 'assigned').length,
@@ -307,7 +307,7 @@ function App() {
           documentDetails: t.documentDetails || '',
           uploadedDocuments: [],
           remarks: t.remarks || '',
-          status: t.status || 'pending',
+          status: t.status || 'unassigned',
           createdById: t.createdBy || '',
           updatedById: t.updatedBy || ''
         };
@@ -341,7 +341,7 @@ function App() {
           documentDetails: t.documentDetails || '',
           uploadedDocuments: [],
           remarks: t.remarks || '',
-          status: t.status || 'pending',
+          status: t.status || 'unassigned',
           createdById: t.createdBy || '',
           updatedById: t.updatedBy || ''
         };
@@ -420,6 +420,11 @@ function App() {
     setIsLoggedIn(false);
     setAuthToken(null);
     localStorage.removeItem('dsam_token');
+    // Reset user-specific data on logout
+    setServices([]);
+    setEmployees(dashboardData.employees);
+    setTasks([]);
+    setClients([]);
   };
 
   // Helper to call backend with Authorization header
@@ -489,7 +494,7 @@ function App() {
               documentDetails: t.documentDetails || '',
               uploadedDocuments: t.uploadedDocuments || [],
               remarks: t.remarks || '',
-              status: t.status || 'pending',
+              status: t.status || 'unassigned',
               createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
               updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
               createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -553,7 +558,7 @@ function App() {
                     documentDetails: t.documentDetails || '',
                     uploadedDocuments: t.uploadedDocuments || [],
                     remarks: t.remarks || '',
-                    status: t.status || 'pending',
+                    status: t.status || 'unassigned',
                     createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
                     updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
                     createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -585,7 +590,7 @@ function App() {
                     documentDetails: t.documentDetails || '',
                     uploadedDocuments: t.uploadedDocuments || [],
                     remarks: t.remarks || '',
-                    status: t.status || 'pending',
+                    status: t.status || 'unassigned',
                     createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
                     updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
                     createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -656,7 +661,7 @@ function App() {
           documentDetails: t.documentDetails || '',
           uploadedDocuments: t.uploadedDocuments || [],
           remarks: t.remarks || '',
-          status: t.status || 'pending',
+          status: t.status || 'unassigned',
           createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
           updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
           createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -724,7 +729,7 @@ function App() {
                 documentDetails: t.documentDetails || '',
                 uploadedDocuments: t.uploadedDocuments || [],
                 remarks: t.remarks || '',
-                status: t.status || 'pending',
+                status: t.status || 'unassigned',
                 createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
                 updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
                 createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -756,7 +761,7 @@ function App() {
                 documentDetails: t.documentDetails || '',
                 uploadedDocuments: t.uploadedDocuments || [],
                 remarks: t.remarks || '',
-                status: t.status || 'pending',
+                status: t.status || 'unassigned',
                 createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
                 updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
                 createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',

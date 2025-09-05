@@ -287,7 +287,7 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <select
-                    value={['pending','ongoing','completed','assigned','unassigned'].includes(task.status) ? task.status : 'unassigned'}
+                    value={['service-delivered','ongoing','completed','assigned','unassigned'].includes(task.status) ? task.status : 'unassigned'}
                     onChange={(e) => handleStatusChange(task.id, e.target.value as Task['status'])}
                     className="text-xs border border-gray-300 rounded px-2 py-1"
                   >
@@ -295,7 +295,7 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                     <option value="assigned">Assigned</option>
                     <option value="ongoing">Ongoing</option>
                     <option value="completed">Completed</option>
-                    <option value="pending">Pending</option>
+                    <option value="service-delivered">Service Delivered</option>
                   </select>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">

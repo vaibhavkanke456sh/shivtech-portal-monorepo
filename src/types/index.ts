@@ -1,5 +1,5 @@
 export interface StatusCounts {
-  PDT: number; // Pending Tasks
+  SDT: number; // Service Delivered Tasks
   CTT: number; // Completed Tasks
   OGT: number; // Ongoing Tasks
   AST: number; // Assigned Tasks
@@ -58,7 +58,7 @@ export interface Task {
   documentDetails?: string;
   uploadedDocuments?: UploadedDocument[];
   remarks?: string;
-  status: 'pending' | 'ongoing' | 'completed' | 'assigned' | 'unassigned';
+  status: 'service-delivered' | 'ongoing' | 'completed' | 'assigned' | 'unassigned';
   createdById?: string;
   updatedById?: string;
   createdByName?: string;

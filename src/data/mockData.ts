@@ -2,12 +2,13 @@ import { DashboardData, Task, Client } from '../types';
 
 export const dashboardData: DashboardData = {
   statusCounts: {
-    PDT: 12,
+    SDT: 12,
     CTT: 38,
     OGT: 3,
     AST: 5,
     UAT: 2,
-    IMT: 1
+    IMT: 1,
+    URT: 0
   },
   mobileBalances: {
     airtel: 3500,
@@ -90,7 +91,7 @@ export const mockTasks: Task[] = [
     unpaidAmount: 100,
     documentDetails: 'Documents pending',
     remarks: 'VIP customer - priority handling',
-    status: 'pending'
+    status: 'unassigned'
   }
 ];
 

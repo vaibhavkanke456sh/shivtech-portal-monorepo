@@ -55,14 +55,14 @@ const Dashboard: React.FC<DashboardProps> = ({ data, onAddTask, onAddClient }) =
       {/* Left Column */}
       <div className="xl:col-span-3 space-y-6">
         {/* Status Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <StatusCard code="PDT" label="Pending Tasks" value={data.statusCounts.PDT} />
-          <StatusCard code="CTT" label="Completed Tasks" value={data.statusCounts.CTT} />
-          <StatusCard code="OGT" label="Ongoing Tasks" value={data.statusCounts.OGT} />
-          <StatusCard code="AST" label="Assigned Tasks" value={data.statusCounts.AST} />
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
           <StatusCard code="UAT" label="Unassigned Tasks" value={data.statusCounts.UAT} />
+          <StatusCard code="AST" label="Assigned Tasks" value={data.statusCounts.AST} />
+          <StatusCard code="OGT" label="Ongoing Tasks" value={data.statusCounts.OGT} />
+          <StatusCard code="CTT" label="Completed Tasks" value={data.statusCounts.CTT} />
           <StatusCard code="IMT" label="Do Now Tasks" value={data.statusCounts.IMT} important />
           <StatusCard code="URT" label="Urgent Tasks" value={data.statusCounts.URT} />
+          <StatusCard code="SDT" label="Service Delivered" value={data.statusCounts.SDT} />
         </div>
 
         {/* Balance Sections */}
