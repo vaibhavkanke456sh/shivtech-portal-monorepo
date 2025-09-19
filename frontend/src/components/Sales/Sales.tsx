@@ -15,6 +15,7 @@ const salesTabs = [
 ];
 
 interface FundTransferForm {
+  id: string;
   customerName: string;
   customerNumber: string;
   beneficiaryName: string;
@@ -32,6 +33,7 @@ interface FundTransferForm {
 }
 
 const defaultFundTransferForm: FundTransferForm = {
+  id: '',
   customerName: '',
   customerNumber: '',
   beneficiaryName: '',
@@ -49,6 +51,7 @@ const defaultFundTransferForm: FundTransferForm = {
 };
 
 interface AEPSForm {
+  id: string;
   aepsIdType: string;
   aepsIdName: string;
   amount: string;
@@ -65,6 +68,7 @@ interface AEPSForm {
 }
 
 const defaultAEPSForm: AEPSForm = {
+  id: '',
   aepsIdType: '',
   aepsIdName: '',
   amount: '',
@@ -84,7 +88,7 @@ const defaultAEPSForm: AEPSForm = {
 type DashboardEntry =
   | ({ type: 'AEPS' } & AEPSForm)
   | ({ type: 'ADD FUND TRANSFER ENTRY' } & FundTransferForm)
-  | { type: string; amount: string };
+  | ({ type: string; amount: string; id: string });
 
 export type { DashboardEntry };
 
@@ -105,6 +109,7 @@ const Sales: React.FC<SalesProps> = ({ onAepsBalanceUpdate, onFundTransferBalanc
   const [amounts, setAmounts] = useState(Array(salesTabs.length).fill(""));
   const [aepsForm, setAepsForm] = useState<AEPSForm>(defaultAEPSForm);
   const [fundTransferForm, setFundTransferForm] = useState<FundTransferForm>(defaultFundTransferForm);
+  const [editingEntry, setEditingEntry] = useState<DashboardEntry | null>(null);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newAmounts = [...amounts];
