@@ -19,7 +19,7 @@ import DeletedTaskList from './components/Tasks/DeletedTaskList';
 import Placeholder from './components/Placeholder';
 import Tools from './components/Tools/Tools';
 import { dashboardData, mockTasks, mockClients } from './data/mockData';
-import { Task, Client } from './types';
+import { Task, Client, Service } from './types';
 import { apiFetch } from './utils/api';
 
 function App() {
@@ -1353,6 +1353,7 @@ function App() {
         employees={employees}
         savedTasks={dashboardData.savedTasks}
         existingCustomers={clients.map(c => c.name)}
+        editingTask={editingTask}
         onAddService={handleAddService}
         onAddEmployee={handleAddEmployee}
       />
