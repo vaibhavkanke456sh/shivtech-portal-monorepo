@@ -401,7 +401,7 @@ function App() {
           documentDetails: t.documentDetails || '',
           uploadedDocuments: [],
           remarks: t.remarks || '',
-          status: t.status || 'pending'
+          status: t.status
         };
         setTasks(prev => prev.map(task => task.id === mapped.id ? mapped : task));
         return;
