@@ -31,7 +31,11 @@ jobs:
     steps:
       - name: Trigger Render Deploy
         run: |
-          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+          if [ -n "${{ secrets.RENDER_DEPLOY_HOOK }}" ]; then
+            curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+          else
+            echo "RENDER_DEPLOY_HOOK secret not configured. Skipping backend deployment trigger."
+          fi
 
   deploy-frontend:
     needs: detect-changes
@@ -40,4 +44,8 @@ jobs:
     steps:
       - name: Trigger Vercel Deploy
         run: |
-          curl -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}"
+          if [ -n "${{ secrets.VERCEL_DEPLOY_HOOK }}" ]; then
+            curl -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}"
+          else
+            echo "VERCEL_DEPLOY_HOOK secret not configured. Skipping frontend deployment trigger."
+          fi

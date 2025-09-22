@@ -13,6 +13,7 @@ interface EnhancedTaskModalProps {
   existingCustomers: string[];
   onAddService: (serviceName: string) => void;
   onAddEmployee: (employeeName: string) => void;
+  editingTask?: Task | null;
 }
 
 const EnhancedTaskModal: React.FC<EnhancedTaskModalProps> = ({ 
@@ -24,7 +25,8 @@ const EnhancedTaskModal: React.FC<EnhancedTaskModalProps> = ({
   savedTasks,
   existingCustomers,
   onAddService,
-  onAddEmployee
+  onAddEmployee,
+  editingTask
 }) => {
   // State for new service and employee input
   const [newServiceName, setNewServiceName] = useState('');
@@ -71,13 +73,37 @@ const EnhancedTaskModal: React.FC<EnhancedTaskModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setFormData(prev => ({
-        ...prev,
-        serialNo: generateTaskSerial(),
-        date: getTodayDate()
-      }));
+      if (editingTask) {
+        // Pre-fill form with editing task data
+        setFormData({
+          serialNo: editingTask.serialNo,
+          date: editingTask.date,
+          taskName: editingTask.taskName,
+          customerName: editingTask.customerName,
+          customerType: editingTask.customerType || 'new',
+          serviceDeliveryDate: editingTask.serviceDeliveryDate,
+          taskType: editingTask.taskType,
+          assignedTo: editingTask.assignedTo,
+          serviceCharge: editingTask.serviceCharge || 0,
+          finalCharges: editingTask.finalCharges || 0,
+          paymentMode: editingTask.paymentMode || 'cash',
+          paymentRemarks: editingTask.paymentRemarks || '',
+          amountCollected: editingTask.amountCollected || 0,
+          unpaidAmount: editingTask.unpaidAmount || 0,
+          documentDetails: editingTask.documentDetails || '',
+          uploadedDocuments: editingTask.uploadedDocuments || [],
+          remarks: editingTask.remarks || ''
+        });
+      } else {
+        // Initialize with default values for new task
+        setFormData(prev => ({
+          ...prev,
+          serialNo: generateTaskSerial(),
+          date: getTodayDate()
+        }));
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, editingTask]);
 
   useEffect(() => {
     const unpaidAmount = Math.max(formData.finalCharges - formData.amountCollected, 0);

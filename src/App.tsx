@@ -828,7 +828,7 @@ function App() {
   
   // Handle status card clicks to redirect to task list
   const handleStatusCardClick = (status: string) => {
-    setActiveScreen('tasks');
+    setActiveScreen('task-all');
     setTaskFilter(status);
   };
   const renderScreen = () => {
@@ -1355,6 +1355,7 @@ function App() {
         existingCustomers={clients.map(c => c.name)}
         onAddService={handleAddService}
         onAddEmployee={handleAddEmployee}
+        editingTask={editingTask}
       />
     </div>
   );
