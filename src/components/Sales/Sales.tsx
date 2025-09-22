@@ -1,6 +1,25 @@
 import React, { useState } from "react";
 import { apiFetch } from '../../utils/api';
 
+const serviceCategories = {
+  "Financial Transactions": [
+    { id: "ADD AEPS TRANSACTION", name: "Add AEPS Transaction", icon: "💳", color: "bg-blue-500" },
+    { id: "ADD FUND TRANSFER ENTRY", name: "Add Fund Transfer Entry", icon: "💸", color: "bg-blue-500" },
+    { id: "ONLIEN RECIVED CAHS GIVEN.", name: "Online Received / Cash Given", icon: "💰", color: "bg-blue-500" },
+    { id: "RECHAREG ENTRY", name: "Recharge Entry", icon: "📱", color: "bg-blue-500" },
+    { id: "BILL PAYMENT ENTRY", name: "Bill Payment Entry", icon: "🧾", color: "bg-blue-500" }
+  ],
+  "Services": [
+    { id: "SIM SOLD", name: "SIM Sold", icon: "📶", color: "bg-green-500" },
+    { id: "PASSPORT PHOTOS", name: "Passport Photos", icon: "📷", color: "bg-green-500" },
+    { id: "LAMINATIONS", name: "Laminations", icon: "🔖", color: "bg-green-500" }
+  ],
+  "Printing & Documentation": [
+    { id: "XEROX", name: "Xerox", icon: "📄", color: "bg-orange-500" },
+    { id: "PRINT", name: "Print", icon: "🖨️", color: "bg-orange-500" }
+  ]
+};
+
 const salesTabs = [
   "ADD AEPS TRANSACTION",
   "ADD FUND TRANSFER ENTRY",
@@ -105,6 +124,8 @@ const Sales: React.FC<SalesProps> = ({ onAepsBalanceUpdate, onFundTransferBalanc
   const [amounts, setAmounts] = useState(Array(salesTabs.length).fill(""));
   const [aepsForm, setAepsForm] = useState<AEPSForm>(defaultAEPSForm);
   const [fundTransferForm, setFundTransferForm] = useState<FundTransferForm>(defaultFundTransferForm);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedService, setSelectedService] = useState<string>("");
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newAmounts = [...amounts];
@@ -239,29 +260,58 @@ const Sales: React.FC<SalesProps> = ({ onAepsBalanceUpdate, onFundTransferBalanc
     setAmounts(newAmounts);
   };
 
+  const handleServiceClick = (serviceId: string) => {
+    const tabIndex = salesTabs.findIndex(tab => tab === serviceId);
+    setActiveTab(tabIndex);
+    setSelectedService(serviceId);
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setSelectedService("");
+  };
+
   return (
-    <div className="flex justify-center items-start min-h-[60vh] bg-gradient-to-br from-blue-50 to-emerald-50 py-10">
-      <div className="w-full max-w-6xl bg-white rounded-2xl shadow-2xl border border-blue-100 p-0">
-        {/* Tabs */}
-        <div className="flex overflow-x-auto border-b border-blue-100 bg-gradient-to-r from-blue-100/60 to-emerald-100/40 rounded-t-2xl scrollbar-thin scrollbar-thumb-blue-200/60">
-          {salesTabs.map((tab, idx) => (
-            <button
-              key={tab}
-              title={tab}
-              className={`truncate max-w-[110px] px-3 py-2 text-xs font-semibold transition-all duration-200 border-b-2 focus:outline-none ${
-                activeTab === idx
-                  ? "border-blue-600 text-blue-700 bg-white shadow-sm z-10"
-                  : "border-transparent text-gray-500 hover:text-blue-600 hover:bg-blue-50"
-              }`}
-              style={{ minWidth: 0 }}
-              onClick={() => setActiveTab(idx)}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-        {/* Content */}
-        <div className="p-16 md:p-24">
+    <div className="min-h-screen bg-gray-900 text-white p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Service Categories */}
+        {Object.entries(serviceCategories).map(([categoryName, services]) => (
+          <div key={categoryName} className="mb-8">
+            <h2 className="text-xl font-semibold mb-4 text-gray-300">{categoryName}</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {services.map((service) => (
+                <div
+                  key={service.id}
+                  onClick={() => handleServiceClick(service.id)}
+                  className="bg-white text-black rounded-lg p-4 cursor-pointer hover:shadow-lg transition-all duration-200 flex items-center space-x-3"
+                >
+                  <div className={`w-10 h-10 ${service.color} rounded-lg flex items-center justify-center text-white text-xl`}>
+                    {service.icon}
+                  </div>
+                  <span className="font-medium">{service.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {/* Modal */}
+        {showModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white text-black rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+              {/* Modal Header */}
+              <div className="bg-gradient-to-r from-blue-600 to-emerald-500 text-white p-6 rounded-t-2xl flex justify-between items-center">
+                <h2 className="text-xl font-semibold">{selectedService}</h2>
+                <button
+                  onClick={closeModal}
+                  className="text-white hover:text-gray-200 text-2xl font-bold"
+                >
+                  ×
+                </button>
+              </div>
+              {/* Modal Content */}
+               <div className="p-6">
           {activeTab === 0 ? (
             <form onSubmit={handleAepsSubmit} className="flex flex-col gap-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -760,10 +810,13 @@ const Sales: React.FC<SalesProps> = ({ onAepsBalanceUpdate, onFundTransferBalanc
               </div>
             </div>
           )}
-        </div>
-      </div>
-    </div>
-  );
+               </div>
+             </div>
+           </div>
+         )}
+       </div>
+     </div>
+   );
 };
 
 export default Sales;
