@@ -828,7 +828,7 @@ function App() {
   
   // Handle status card clicks to redirect to task list
   const handleStatusCardClick = (status: string) => {
-    setActiveScreen('task-all');
+    setActiveScreen('tasks');
     setTaskFilter(status);
   };
   const renderScreen = () => {
