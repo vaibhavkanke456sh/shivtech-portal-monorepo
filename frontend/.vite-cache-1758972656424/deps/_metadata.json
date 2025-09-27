@@ -1,0 +1,64 @@
+{
+  "hash": "30c92524",
+  "configHash": "c939c0f8",
+  "lockfileHash": "beae25c2",
+  "browserHash": "015d6d51",
+  "optimized": {
+    "react": {
+      "src": "../../../node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "1950ea59",
+      "needsInterop": true
+    },
+    "react-dom": {
+      "src": "../../../node_modules/react-dom/index.js",
+      "file": "react-dom.js",
+      "fileHash": "82194378",
+      "needsInterop": true
+    },
+    "react/jsx-dev-runtime": {
+      "src": "../../../node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "2978987b",
+      "needsInterop": true
+    },
+    "react/jsx-runtime": {
+      "src": "../../../node_modules/react/jsx-runtime.js",
+      "file": "react_jsx-runtime.js",
+      "fileHash": "444b9b87",
+      "needsInterop": true
+    },
+    "chart.js": {
+      "src": "../../../node_modules/chart.js/dist/chart.js",
+      "file": "chart__js.js",
+      "fileHash": "2b3a2cb8",
+      "needsInterop": false
+    },
+    "react-chartjs-2": {
+      "src": "../../../node_modules/react-chartjs-2/dist/index.js",
+      "file": "react-chartjs-2.js",
+      "fileHash": "593a06b2",
+      "needsInterop": false
+    },
+    "react-dom/client": {
+      "src": "../../../node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "b7136ed3",
+      "needsInterop": true
+    }
+  },
+  "chunks": {
+    "chunk-CRSB3YAX": {
+      "file": "chunk-CRSB3YAX.js"
+    },
+    "chunk-URVJV3K3": {
+      "file": "chunk-URVJV3K3.js"
+    },
+    "chunk-6ULY52FT": {
+      "file": "chunk-6ULY52FT.js"
+    },
+    "chunk-EQCVQC35": {
+      "file": "chunk-EQCVQC35.js"
+    }
+  }
+}

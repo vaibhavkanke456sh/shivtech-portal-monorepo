@@ -24,10 +24,10 @@ export default defineConfig({
     // Generate unique filenames for cache busting
     rollupOptions: {
       output: {
-        // Add timestamp to chunk names for cache busting
-        chunkFileNames: 'assets/[name]-[hash]-[timestamp].js',
-        entryFileNames: 'assets/[name]-[hash]-[timestamp].js',
-        assetFileNames: 'assets/[name]-[hash]-[timestamp].[ext]'
+        // Use hash for cache busting
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]'
       }
     }
   },
