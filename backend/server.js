@@ -29,15 +29,34 @@ app.use(helmet());
 
 // CORS configuration
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://localhost:5173',
-    'https://shivtech-portal-frontend.vercel.app',
-    'https://shivtech-portal-frontend-kfu227h14-vaibhavkanke456shs-projects.vercel.app',
-    'https://shivtech-portal-frontend-36cu8oyrm-vaibhavkanke456shs-projects.vercel.app',
-    process.env.CORS_ORIGIN
-  ].filter(Boolean),
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:5173',
+      'https://shivtech-portal-frontend.vercel.app',
+      'https://shivtech-portal-frontend-kfu227h14-vaibhavkanke456shs-projects.vercel.app',
+      'https://shivtech-portal-frontend-36cu8oyrm-vaibhavkanke456shs-projects.vercel.app',
+      process.env.CORS_ORIGIN
+    ].filter(Boolean);
+    
+    // Check if origin matches any allowed origin
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    // Check if origin matches Vercel deployment pattern
+    if (origin.match(/^https:\/\/shivtech-portal-frontend-[a-z0-9]+-vaibhavkanke456shs-projects\.vercel\.app$/)) {
+      return callback(null, true);
+    }
+    
+    // Reject other origins
+    const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+    return callback(new Error(msg), false);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
