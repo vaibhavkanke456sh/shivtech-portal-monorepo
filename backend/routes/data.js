@@ -6,6 +6,9 @@ import Task from '../models/Task.js';
 import Service from '../models/Service.js';
 import FundTransfer from '../models/FundTransfer.js';
 import AepsEntry from '../models/AepsEntry.js';
+import MobileBalance from '../models/MobileBalance.js';
+import BankCashAeps from '../models/BankCashAeps.js';
+import SalesEntry from '../models/SalesEntry.js';
 import User from '../models/User.js';
 
 const router = express.Router();
@@ -207,6 +210,312 @@ router.put('/aeps-entries/:id', async (req, res) => {
 router.delete('/aeps-entries/:id', async (req, res) => {
   await AepsEntry.findOneAndUpdate({ _id: req.params.id, owner: req.user._id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
   res.json({ success: true });
+});
+
+// Mobile Balances
+router.get('/mobile-balances', async (req, res) => {
+  const entries = await MobileBalance.find({ owner: req.user._id, isDeleted: false }).sort({ createdAt: -1 });
+  res.json({ success: true, data: { entries } });
+});
+
+router.post('/mobile-balances', async (req, res) => {
+  const payload = { ...req.body, owner: req.user._id };
+  const entry = await MobileBalance.create(payload);
+  res.status(201).json({ success: true, data: { entry } });
+});
+
+router.put('/mobile-balances/:id', async (req, res) => {
+  const updates = { ...req.body };
+  const entry = await MobileBalance.findOneAndUpdate({ _id: req.params.id, owner: req.user._id }, updates, { new: true });
+  res.json({ success: true, data: { entry } });
+});
+
+router.delete('/mobile-balances/:id', async (req, res) => {
+  await MobileBalance.findOneAndUpdate({ _id: req.params.id, owner: req.user._id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
+  res.json({ success: true });
+});
+
+// Bank/Cash/AEPS Entries
+router.get('/bank-cash-aeps', async (req, res) => {
+  const entries = await BankCashAeps.find({ owner: req.user._id, isDeleted: false }).sort({ createdAt: -1 });
+  res.json({ success: true, data: { entries } });
+});
+
+router.post('/bank-cash-aeps', async (req, res) => {
+  const payload = { ...req.body, owner: req.user._id };
+  const entry = await BankCashAeps.create(payload);
+  res.status(201).json({ success: true, data: { entry } });
+});
+
+router.put('/bank-cash-aeps/:id', async (req, res) => {
+  const updates = { ...req.body };
+  const entry = await BankCashAeps.findOneAndUpdate({ _id: req.params.id, owner: req.user._id }, updates, { new: true });
+  res.json({ success: true, data: { entry } });
+});
+
+router.delete('/bank-cash-aeps/:id', async (req, res) => {
+  await BankCashAeps.findOneAndUpdate({ _id: req.params.id, owner: req.user._id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
+  res.json({ success: true });
+});
+
+// Unified Sales Entries - Get all entry types in one response
+router.get('/sales-entries', async (req, res) => {
+  try {
+    const { dateFrom, dateTo, serviceType } = req.query;
+    
+    // Build date filter
+    const dateFilter = {};
+    if (dateFrom) dateFilter.$gte = new Date(dateFrom);
+    if (dateTo) dateFilter.$lte = new Date(dateTo);
+    
+    const baseFilter = { owner: req.user._id, isDeleted: false };
+    if (Object.keys(dateFilter).length > 0) {
+      baseFilter.createdAt = dateFilter;
+    }
+    
+    // Fetch all entry types
+    const [fundTransfers, aepsEntries, mobileBalances, bankCashAeps, salesEntries] = await Promise.all([
+      FundTransfer.find(baseFilter).sort({ createdAt: -1 }),
+      AepsEntry.find(baseFilter).sort({ createdAt: -1 }),
+      MobileBalance.find(baseFilter).sort({ createdAt: -1 }),
+      BankCashAeps.find(baseFilter).sort({ createdAt: -1 }),
+      SalesEntry.find(baseFilter).sort({ createdAt: -1 })
+    ]);
+    
+    // Transform to unified format
+    const entries = [];
+    
+    // Fund Transfer entries
+    fundTransfers.forEach(entry => {
+      if (!serviceType || serviceType === 'ADD FUND TRANSFER ENTRY') {
+        entries.push({
+          _id: entry._id,
+          type: 'ADD FUND TRANSFER ENTRY',
+          senderName: entry.senderName,
+          receiverName: entry.receiverName,
+          amount: entry.amount,
+          transferType: entry.transferType,
+          timestamp: entry.createdAt,
+          createdAt: entry.createdAt
+        });
+      }
+    });
+    
+    // AEPS entries
+    aepsEntries.forEach(entry => {
+      if (!serviceType || serviceType === 'AEPS') {
+        entries.push({
+          _id: entry._id,
+          type: 'AEPS',
+          aepsIdName: entry.aepsIdName,
+          amount: entry.amount,
+          commissionAmount: entry.commissionAmount,
+          timestamp: entry.createdAt,
+          createdAt: entry.createdAt
+        });
+      }
+    });
+    
+    // Mobile Balance entries
+    mobileBalances.forEach(entry => {
+      if (!serviceType || serviceType === 'MOBILE_BALANCE') {
+        entries.push({
+          _id: entry._id,
+          type: 'MOBILE_BALANCE',
+          companyName: entry.companyName,
+          operationType: entry.operationType,
+          amount: entry.amount,
+          reason: entry.reason,
+          timestamp: entry.createdAt,
+          createdAt: entry.createdAt
+        });
+      }
+    });
+    
+    // Bank/Cash/AEPS entries
+    bankCashAeps.forEach(entry => {
+      if (!serviceType || serviceType === 'BANK_CASH_AEPS') {
+        entries.push({
+          _id: entry._id,
+          type: 'BANK_CASH_AEPS',
+          companyName: entry.companyName,
+          operationType: entry.operationType,
+          amount: entry.amount,
+          reason: entry.reason,
+          timestamp: entry.createdAt,
+          createdAt: entry.createdAt
+        });
+      }
+    });
+
+    // Sales entries (Recharge, Bill Payment, SIM Sold, etc.)
+    salesEntries.forEach(entry => {
+      if (!serviceType || serviceType === entry.entryType) {
+        entries.push({
+          _id: entry._id,
+          type: entry.entryType,
+          customerName: entry.customerName,
+          customerNumber: entry.customerNumber,
+          amount: entry.amount,
+          quantity: entry.quantity,
+          remarks: entry.remarks,
+          timestamp: entry.createdAt,
+          createdAt: entry.createdAt
+        });
+       }
+     });
+    
+    // Sort by creation date (newest first)
+    entries.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    
+    res.json({ success: true, data: { entries } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Create unified sales entry
+router.post('/sales-entries', async (req, res) => {
+  try {
+    const { entryType, type, data, ...entryData } = req.body;
+    // Handle both 'entryType' and 'type' for backward compatibility
+    const actualType = entryType || type;
+    // Use 'data' field if provided, otherwise use the rest of the body
+    const actualData = data || entryData;
+    
+    // Convert string numbers to actual numbers based on entry type
+    let processedData = { ...actualData };
+    
+    if (actualType === 'AEPS') {
+      processedData.amount = parseFloat(processedData.amount || '0');
+      processedData.commissionAmount = parseFloat(processedData.commissionAmount || '0');
+    } else if (actualType === 'ADD FUND TRANSFER ENTRY') {
+      processedData.amount = parseFloat(processedData.amount || '0');
+      processedData.commissionAmount = parseFloat(processedData.commissionAmount || '0');
+    } else if (actualType === 'MOBILE_BALANCE' || actualType === 'BANK_CASH_AEPS') {
+      processedData.amount = parseFloat(processedData.amount || '0');
+    }
+    
+    const payload = { ...processedData, owner: req.user._id };
+    
+    let entry;
+    switch (actualType) {
+      case 'ADD FUND TRANSFER ENTRY':
+        entry = await FundTransfer.create(payload);
+        break;
+      case 'AEPS':
+        entry = await AepsEntry.create(payload);
+        break;
+      case 'MOBILE_BALANCE':
+        entry = await MobileBalance.create(payload);
+        break;
+      case 'BANK_CASH_AEPS':
+        entry = await BankCashAeps.create(payload);
+        break;
+      case 'RECHARGE_ENTRY':
+      case 'BILL_PAYMENT_ENTRY':
+      case 'SIM_SOLD':
+      case 'XEROX':
+      case 'PRINT':
+      case 'PASSPORT_PHOTOS':
+      case 'LAMINATIONS':
+        payload.entryType = actualType;
+        entry = await SalesEntry.create(payload);
+        break;
+      default:
+        return res.status(400).json({ success: false, message: `Invalid entry type: ${actualType}` });
+    }
+    
+    res.status(201).json({ success: true, data: { entry } });
+  } catch (error) {
+    console.error('Error creating sales entry:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Update unified sales entry
+router.put('/sales-entries/:type/:id', async (req, res) => {
+  try {
+    const { type, id } = req.params;
+    const updates = { ...req.body };
+    
+    let entry;
+    switch (type) {
+      case 'ADD_FUND_TRANSFER_ENTRY':
+        entry = await FundTransfer.findOneAndUpdate({ _id: id, owner: req.user._id }, updates, { new: true });
+        break;
+      case 'AEPS':
+        entry = await AepsEntry.findOneAndUpdate({ _id: id, owner: req.user._id }, updates, { new: true });
+        break;
+      case 'MOBILE_BALANCE':
+        entry = await MobileBalance.findOneAndUpdate({ _id: id, owner: req.user._id }, updates, { new: true });
+        break;
+      case 'BANK_CASH_AEPS':
+        entry = await BankCashAeps.findOneAndUpdate({ _id: id, owner: req.user._id }, updates, { new: true });
+        break;
+      case 'RECHARGE_ENTRY':
+      case 'BILL_PAYMENT_ENTRY':
+      case 'SIM_SOLD':
+      case 'XEROX':
+      case 'PRINT':
+      case 'PASSPORT_PHOTOS':
+      case 'LAMINATIONS':
+        entry = await SalesEntry.findOneAndUpdate({ _id: id, owner: req.user._id }, updates, { new: true });
+        break;
+      default:
+        return res.status(400).json({ success: false, message: 'Invalid entry type' });
+    }
+    
+    if (!entry) {
+      return res.status(404).json({ success: false, message: 'Entry not found' });
+    }
+    
+    res.json({ success: true, data: { entry } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Delete unified sales entry
+router.delete('/sales-entries/:type/:id', async (req, res) => {
+  try {
+    const { type, id } = req.params;
+    
+    let result;
+    switch (type) {
+      case 'ADD_FUND_TRANSFER_ENTRY':
+        result = await FundTransfer.findOneAndUpdate({ _id: id, owner: req.user._id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
+        break;
+      case 'AEPS':
+        result = await AepsEntry.findOneAndUpdate({ _id: id, owner: req.user._id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
+        break;
+      case 'MOBILE_BALANCE':
+        result = await MobileBalance.findOneAndUpdate({ _id: id, owner: req.user._id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
+        break;
+      case 'BANK_CASH_AEPS':
+        result = await BankCashAeps.findOneAndUpdate({ _id: id, owner: req.user._id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
+        break;
+      case 'RECHARGE_ENTRY':
+      case 'BILL_PAYMENT_ENTRY':
+      case 'SIM_SOLD':
+      case 'XEROX':
+      case 'PRINT':
+      case 'PASSPORT_PHOTOS':
+      case 'LAMINATIONS':
+        result = await SalesEntry.findOneAndUpdate({ _id: id, owner: req.user._id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
+        break;
+      default:
+        return res.status(400).json({ success: false, message: 'Invalid entry type' });
+    }
+    
+    if (!result) {
+      return res.status(404).json({ success: false, message: 'Entry not found' });
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 export default router;

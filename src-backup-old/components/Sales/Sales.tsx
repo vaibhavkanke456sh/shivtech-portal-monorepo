@@ -1,0 +1,2124 @@
+import React, { useState, useEffect } from "react";
+import { apiFetch } from '../../utils/api';
+
+const serviceCategories = {
+  "Financial Transactions": [
+    { id: "ADD NEW ENTRY", name: "ADD NEW ENTRY", icon: "➕", color: "bg-purple-500" },
+    { id: "SHOW ENTRIES", name: "Show Entries", icon: "📋", color: "bg-indigo-500" },
+    { id: "ADD AEPS TRANSACTION", name: "Add AEPS Transaction", icon: "💳", color: "bg-blue-500" },
+    { id: "ADD FUND TRANSFER ENTRY", name: "Add Fund Transfer Entry", icon: "💸", color: "bg-blue-500" },
+    { id: "ONLIEN RECIVED CAHS GIVEN.", name: "Online Received / Cash Given", icon: "💰", color: "bg-blue-500" },
+    { id: "RECHAREG ENTRY", name: "Recharge Entry", icon: "📱", color: "bg-blue-500" },
+    { id: "BILL PAYMENT ENTRY", name: "Bill Payment Entry", icon: "🧾", color: "bg-blue-500" }
+  ],
+  "Services": [
+    { id: "SIM SOLD", name: "SIM Sold", icon: "📶", color: "bg-green-500" },
+    { id: "PASSPORT PHOTOS", name: "Passport Photos", icon: "📷", color: "bg-green-500" },
+    { id: "LAMINATIONS", name: "Laminations", icon: "🔖", color: "bg-green-500" }
+  ],
+  "Printing & Documentation": [
+    { id: "XEROX", name: "Xerox", icon: "📄", color: "bg-orange-500" },
+    { id: "PRINT", name: "Print", icon: "🖨️", color: "bg-orange-500" }
+  ]
+};
+
+const salesTabs = [
+  "ADD NEW ENTRY",
+  "SHOW ENTRIES",
+  "ADD AEPS TRANSACTION",
+  "ADD FUND TRANSFER ENTRY",
+  "ONLIEN RECIVED CAHS GIVEN.",
+  "RECHAREG ENTRY",
+  "BILL PAYMENT ENTRY",
+  "SIM SOLD",
+  "XEROX",
+  "PRINT",
+  "PASSPORT PHOTOS",
+  "LAMINATIONS"
+];
+
+interface MobileBalanceForm {
+  companyName: string;
+  operationType: string; // 'add' or 'remove'
+  amount: string;
+  reason: string;
+}
+
+interface BankCashAepsForm {
+  companyName: string;
+  operationType: string; // 'add' or 'remove'
+  amount: string;
+  reason: string;
+}
+
+interface FundTransferForm {
+  customerName: string;
+  customerNumber: string;
+  beneficiaryName: string;
+  beneficiaryNumber: string;
+  applicationName: string;
+  transferredFrom: string;
+  transferredFromRemark: string;
+  amount: string;
+  cashReceived: string;
+  addedInGala: string;
+  addedInGalaRemark: string;
+  commissionType: string;
+  commissionAmount: string;
+  commissionRemark: string;
+}
+
+const defaultMobileBalanceForm: MobileBalanceForm = {
+  companyName: '',
+  operationType: '',
+  amount: '',
+  reason: '',
+};
+
+const defaultBankCashAepsForm: BankCashAepsForm = {
+  companyName: '',
+  operationType: '',
+  amount: '',
+  reason: '',
+};
+
+const defaultFundTransferForm: FundTransferForm = {
+  customerName: '',
+  customerNumber: '',
+  beneficiaryName: '',
+  beneficiaryNumber: '',
+  applicationName: '',
+  transferredFrom: '',
+  transferredFromRemark: '',
+  amount: '',
+  cashReceived: '',
+  addedInGala: '',
+  addedInGalaRemark: '',
+  commissionType: '',
+  commissionAmount: '',
+  commissionRemark: '',
+};
+
+interface AEPSForm {
+  aepsIdType: string;
+  aepsIdName: string;
+  amount: string;
+  givenToCustomer: string;
+  givenToCustomerRemark: string;
+  givenToCustomerOther: string;
+  withdrawnType: string;
+  commissionType: string;
+  commissionAmount: string;
+  commissionRemark: string;
+  paymentApplication?: string;
+  transferredFrom?: string;
+  transferredFromRemark?: string;
+}
+
+const defaultAEPSForm: AEPSForm = {
+  aepsIdType: '',
+  aepsIdName: '',
+  amount: '',
+  givenToCustomer: '',
+  givenToCustomerRemark: '',
+  givenToCustomerOther: '',
+  withdrawnType: '',
+  commissionType: '',
+  commissionAmount: '',
+  commissionRemark: '',
+  paymentApplication: '',
+  transferredFrom: '',
+  transferredFromRemark: '',
+};
+
+
+type DashboardEntry =
+  | ({ type: 'AEPS'; date?: string } & AEPSForm)
+  | ({ type: 'ADD FUND TRANSFER ENTRY'; date?: string } & FundTransferForm)
+  | ({ type: 'MOBILE_BALANCE'; date?: string } & MobileBalanceForm)
+  | ({ type: 'BANK_CASH_AEPS'; date?: string } & BankCashAepsForm)
+  | { type: string; amount: string; date?: string };
+
+export type { DashboardEntry };
+
+interface SalesProps {
+  token?: string;
+  onAepsBalanceUpdate?: (aepsIdType: string, amount: number, payoutInfo?: { transferredFrom?: string; cashFromGala?: boolean; withdrawnFromId?: boolean; commissionType?: string; commissionAmount?: number }) => void;
+  onFundTransferBalanceUpdate?: (
+    account: 'vaibhav' | 'omkar' | 'uma' | 'shopaccounts' | 'cash',
+    amount: number,
+    commissionType?: 'cash' | 'online',
+    commissionAmount?: number
+  ) => void;
+  onMobileBalanceUpdate?: (
+    companyName: string,
+    operationType: 'add' | 'remove',
+    amount: number
+  ) => void;
+  onBankCashAepsUpdate?: (
+    companyName: string,
+    operationType: 'add' | 'remove',
+    amount: number
+  ) => void;
+  dashboardEntries: DashboardEntry[];
+  setDashboardEntries: React.Dispatch<React.SetStateAction<DashboardEntry[]>>;
+}
+
+const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransferBalanceUpdate, onMobileBalanceUpdate, onBankCashAepsUpdate, dashboardEntries, setDashboardEntries }) => {
+
+  const [activeTab, setActiveTab] = useState(0);
+  const [amounts, setAmounts] = useState(Array(salesTabs.length).fill(""));
+  const [aepsForm, setAepsForm] = useState<AEPSForm>(defaultAEPSForm);
+  const [fundTransferForm, setFundTransferForm] = useState<FundTransferForm>(defaultFundTransferForm);
+  const [mobileBalanceForm, setMobileBalanceForm] = useState<MobileBalanceForm>(defaultMobileBalanceForm);
+  const [bankCashAepsForm, setBankCashAepsForm] = useState<BankCashAepsForm>(defaultBankCashAepsForm);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedService, setSelectedService] = useState<string>("");
+  const [showAddNewEntryForm, setShowAddNewEntryForm] = useState(false);
+  const [addNewEntryType, setAddNewEntryType] = useState<'mobile' | 'bank'>('mobile');
+  const [showEntriesModal, setShowEntriesModal] = useState(false);
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterServiceType, setFilterServiceType] = useState('all');
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState<DashboardEntry | null>(null);
+  const [entries, setEntries] = useState<any[]>([]);
+  const [filteredEntries, setFilteredEntries] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // Validation functions
+  const validateAepsForm = (form: AEPSForm): string | null => {
+    if (!form.aepsIdType) return 'AEPS ID Type is required';
+    if (!form.amount || parseFloat(form.amount) <= 0) return 'Valid amount is required';
+    if (!form.givenToCustomer) return 'Given to Customer field is required';
+    if (!form.commissionType) return 'Commission type is required';
+    return null;
+  };
+
+  const validateMobileBalanceForm = (form: MobileBalanceForm): string | null => {
+    if (!form.companyName?.trim()) return 'Company name is required';
+    if (!form.operationType) return 'Operation type is required';
+    if (!form.amount || parseFloat(form.amount) <= 0) return 'Valid amount is required';
+    if (!form.reason?.trim()) return 'Reason is required';
+    return null;
+  };
+
+  const validateBankCashAepsForm = (form: BankCashAepsForm): string | null => {
+    if (!form.companyName?.trim()) return 'Company name is required';
+    if (!form.operationType) return 'Operation type is required';
+    if (!form.amount || parseFloat(form.amount) <= 0) return 'Valid amount is required';
+    if (!form.reason?.trim()) return 'Reason is required';
+    return null;
+  };
+
+  const validateFundTransferForm = (form: FundTransferForm): string | null => {
+    if (!form.customerName?.trim()) return 'Customer name is required';
+    if (!form.customerNumber?.trim()) return 'Customer number is required';
+    if (!form.beneficiaryName?.trim()) return 'Beneficiary name is required';
+    if (!form.beneficiaryNumber?.trim()) return 'Beneficiary number is required';
+    if (!form.applicationName) return 'Application name is required';
+    if (!form.transferredFrom) return 'Transferred from field is required';
+    if (!form.amount || parseFloat(form.amount) <= 0) return 'Valid amount is required';
+    if (!form.cashReceived) return 'Cash received field is required';
+    if (!form.addedInGala) return 'Added in Gala field is required';
+    if (!form.commissionType) return 'Commission type is required';
+    return null;
+  };
+
+  // Show success/error messages
+  const showMessage = (message: string, type: 'success' | 'error') => {
+    if (type === 'success') {
+      setSuccess(message);
+      setError(null);
+    } else {
+      setError(message);
+      setSuccess(null);
+    }
+    setTimeout(() => {
+      setSuccess(null);
+      setError(null);
+    }, 5000);
+  };
+
+  // Update filtered entries based on current filters
+  const updateFilteredEntries = () => {
+    // Combine entries from API and dashboardEntries
+    const allEntries = [...(Array.isArray(entries) ? entries : []), ...dashboardEntries];
+    
+    const filtered = allEntries.filter(entry => {
+      // Filter by service type
+      if (filterServiceType !== 'all') {
+        if (filterServiceType === 'other') {
+          const knownTypes = [
+            'MOBILE_BALANCE', 'BANK_CASH_AEPS', 'AEPS', 'ADD FUND TRANSFER ENTRY',
+            'RECHARGE_ENTRY', 'BILL_PAYMENT_ENTRY', 'SIM_SOLD', 'XEROX', 
+            'PRINT', 'PASSPORT_PHOTOS', 'LAMINATIONS'
+          ];
+          if (knownTypes.includes(entry.type)) {
+            return false;
+          }
+        } else if (entry.type !== filterServiceType) {
+          return false;
+        }
+      }
+
+      // Filter by date range
+      if (filterDateFrom || filterDateTo) {
+        const entryDate = entry.date ? new Date(entry.date) : new Date();
+        const fromDate = filterDateFrom ? new Date(filterDateFrom) : null;
+        const toDate = filterDateTo ? new Date(filterDateTo) : null;
+
+        // Normalize dates to compare only date part, not time
+        const entryDateOnly = new Date(entryDate.getFullYear(), entryDate.getMonth(), entryDate.getDate());
+        const fromDateOnly = fromDate ? new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate()) : null;
+        const toDateOnly = toDate ? new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate()) : null;
+
+        if (fromDateOnly && entryDateOnly < fromDateOnly) return false;
+        if (toDateOnly && entryDateOnly > toDateOnly) return false;
+      }
+
+      return true;
+    });
+    setFilteredEntries(filtered);
+  };
+
+  // Fetch entries from backend
+  const fetchEntries = async () => {
+    try {
+      setLoading(true);
+      const headers: any = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const response = await apiFetch('/api/data/sales-entries', { headers });
+      const data = await response.json();
+      if (data.success) {
+        // Ensure data.data.entries is an array before setting entries
+        const entriesData = Array.isArray(data.data?.entries) ? data.data.entries : [];
+        setEntries(entriesData);
+        // Don't overwrite dashboardEntries - they should persist locally
+      }
+    } catch (error) {
+      console.error('Error fetching entries:', error);
+      // Ensure entries remains an array even on error
+      setEntries([]);
+      // Don't clear dashboardEntries on error - they should persist locally
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchEntries();
+    // Set default dates to today
+    const today = new Date().toISOString().split('T')[0];
+    setFilterDateFrom(today);
+    setFilterDateTo(today);
+  }, []);
+
+  // Update filtered entries when entries or filters change
+  useEffect(() => {
+    updateFilteredEntries();
+  }, [entries, dashboardEntries, filterServiceType, filterDateFrom, filterDateTo]);
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newAmounts = [...amounts];
+    newAmounts[activeTab] = e.target.value;
+    setAmounts(newAmounts);
+  };
+
+  const handleAepsChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setAepsForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleAepsSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validate form
+    const validationError = validateAepsForm(aepsForm);
+    if (validationError) {
+      showMessage(validationError, 'error');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const response = await apiFetch('/api/data/sales-entries', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          entryType: 'AEPS',
+          data: {
+            ...aepsForm,
+            amount: parseFloat(aepsForm.amount || '0'),
+            commissionAmount: parseFloat(aepsForm.commissionAmount || '0')
+          }
+        })
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        await fetchEntries();
+        setAepsForm(defaultAEPSForm);
+        showMessage('AEPS entry saved successfully!', 'success');
+      } else {
+        showMessage(data.message || 'Failed to save AEPS entry', 'error');
+      }
+    } catch (error) {
+      console.error('Error saving AEPS entry:', error);
+      showMessage('Network error. Please try again.', 'error');
+    } finally {
+      setLoading(false);
+    }
+    // Update AEPS balance in real time
+    if (onAepsBalanceUpdate && aepsForm.aepsIdType && aepsForm.amount) {
+      const amt = parseFloat(aepsForm.amount);
+      if (!isNaN(amt)) {
+        // If payout is Online, pass transferredFrom for deduction
+        const commissionAmt = parseFloat(aepsForm.commissionAmount);
+        if (aepsForm.givenToCustomer === 'Online') {
+          onAepsBalanceUpdate(aepsForm.aepsIdType, amt, {
+            transferredFrom: aepsForm.transferredFrom,
+            commissionType: aepsForm.commissionType,
+            commissionAmount: commissionAmt
+          });
+        } else if (aepsForm.givenToCustomer === 'Cash from Gala') {
+          onAepsBalanceUpdate(aepsForm.aepsIdType, amt, {
+            cashFromGala: true,
+            commissionType: aepsForm.commissionType,
+            commissionAmount: commissionAmt
+          });
+        } else if (aepsForm.givenToCustomer === 'Withdrawn from ID') {
+          onAepsBalanceUpdate(aepsForm.aepsIdType, amt, {
+            withdrawnFromId: true,
+            commissionType: aepsForm.commissionType,
+            commissionAmount: commissionAmt
+          });
+        } else {
+          onAepsBalanceUpdate(aepsForm.aepsIdType, amt, {
+            commissionType: aepsForm.commissionType,
+            commissionAmount: commissionAmt
+          });
+        }
+      }
+    }
+    setAepsForm(defaultAEPSForm);
+  };
+
+
+  const handleFundTransferChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFundTransferForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleMobileBalanceChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setMobileBalanceForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleBankCashAepsChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setBankCashAepsForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleMobileBalanceSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validate form
+    const validationError = validateMobileBalanceForm(mobileBalanceForm);
+    if (validationError) {
+      showMessage(validationError, 'error');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const response = await apiFetch('/api/data/sales-entries', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          entryType: 'MOBILE_BALANCE',
+          data: {
+            ...mobileBalanceForm,
+            amount: parseFloat(mobileBalanceForm.amount || '0')
+          }
+        })
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        await fetchEntries();
+        setMobileBalanceForm(defaultMobileBalanceForm);
+        showMessage('Mobile balance entry saved successfully!', 'success');
+      } else {
+        showMessage(data.message || 'Failed to save mobile balance entry', 'error');
+      }
+    } catch (error) {
+      console.error('Error saving mobile balance entry:', error);
+      showMessage('Network error. Please try again.', 'error');
+      
+      // Fallback: Update local state even on API failure
+      setDashboardEntries((prev) => [
+        { type: 'MOBILE_BALANCE', ...mobileBalanceForm, date: new Date().toISOString() },
+        ...prev
+      ]);
+    } finally {
+      setLoading(false);
+    }
+    
+    // Update mobile balance in real-time
+    if (onMobileBalanceUpdate && mobileBalanceForm.companyName && mobileBalanceForm.amount) {
+      const amt = parseFloat(mobileBalanceForm.amount);
+      if (!isNaN(amt)) {
+        onMobileBalanceUpdate(
+          mobileBalanceForm.companyName,
+          mobileBalanceForm.operationType as 'add' | 'remove',
+          amt
+        );
+      }
+    }
+    
+    setMobileBalanceForm(defaultMobileBalanceForm);
+    setShowAddNewEntryForm(false);
+  };
+
+  const handleBankCashAepsSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validate form
+    const validationError = validateBankCashAepsForm(bankCashAepsForm);
+    if (validationError) {
+      showMessage(validationError, 'error');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const response = await apiFetch('/api/data/sales-entries', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          entryType: 'BANK_CASH_AEPS',
+          data: {
+            ...bankCashAepsForm,
+            amount: parseFloat(bankCashAepsForm.amount || '0')
+          }
+        })
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        await fetchEntries();
+        setBankCashAepsForm(defaultBankCashAepsForm);
+        showMessage('Bank cash AEPS entry saved successfully!', 'success');
+      } else {
+        showMessage(data.message || 'Failed to save bank cash AEPS entry', 'error');
+      }
+    } catch (error) {
+      console.error('Error saving bank cash AEPS entry:', error);
+      showMessage('Network error. Please try again.', 'error');
+      
+      // Fallback: Update local state even on API failure
+      setDashboardEntries((prev) => [
+        { type: 'BANK_CASH_AEPS', ...bankCashAepsForm, date: new Date().toISOString() },
+        ...prev
+      ]);
+    } finally {
+      setLoading(false);
+    }
+    
+    // Update bank/cash/aeps balance in real-time
+    if (onBankCashAepsUpdate && bankCashAepsForm.companyName && bankCashAepsForm.amount) {
+      const amt = parseFloat(bankCashAepsForm.amount);
+      if (!isNaN(amt)) {
+        onBankCashAepsUpdate(
+          bankCashAepsForm.companyName,
+          bankCashAepsForm.operationType as 'add' | 'remove',
+          amt
+        );
+      }
+    }
+    setBankCashAepsForm(defaultBankCashAepsForm);
+    setShowAddNewEntryForm(false);
+  };
+
+  // Enhanced Fund Transfer logic: update dashboard balances for Vaibhav, Omkar, Uma
+  const handleFundTransferSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validate form
+    const validationError = validateFundTransferForm(fundTransferForm);
+    if (validationError) {
+      showMessage(validationError, 'error');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const response = await apiFetch('/api/data/sales-entries', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          entryType: 'ADD_FUND_TRANSFER_ENTRY',
+          data: {
+            ...fundTransferForm,
+            amount: parseFloat(fundTransferForm.amount || '0'),
+            commissionAmount: parseFloat(fundTransferForm.commissionAmount || '0')
+          }
+        })
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        await fetchEntries();
+        setFundTransferForm(defaultFundTransferForm);
+        showMessage('Fund transfer entry saved successfully!', 'success');
+      } else {
+        showMessage(data.message || 'Failed to save fund transfer entry', 'error');
+      }
+    } catch (error) {
+      console.error('Error saving fund transfer entry:', error);
+      showMessage('Network error. Please try again.', 'error');
+    } finally {
+      setLoading(false);
+    }
+    // Real-time deduction from Vaibhav, Omkar, Uma, Shop Accounts
+    if (onFundTransferBalanceUpdate && fundTransferForm.transferredFrom && fundTransferForm.amount) {
+      const amt = parseFloat(fundTransferForm.amount);
+      const commissionType = fundTransferForm.commissionType?.toLowerCase() === 'cash' ? 'cash' : (fundTransferForm.commissionType?.toLowerCase() === 'online' ? 'online' : undefined);
+      const commissionAmount = parseFloat(fundTransferForm.commissionAmount);
+      if (!isNaN(amt)) {
+        if (fundTransferForm.transferredFrom === 'Vaibhav') {
+          onFundTransferBalanceUpdate('vaibhav', amt, commissionType, commissionAmount);
+        } else if (fundTransferForm.transferredFrom === 'Omkar') {
+          onFundTransferBalanceUpdate('omkar', amt, commissionType, commissionAmount);
+        } else if (fundTransferForm.transferredFrom === 'Uma') {
+          onFundTransferBalanceUpdate('uma', amt, commissionType, commissionAmount);
+        } else if (fundTransferForm.transferredFrom === 'Shop Accounts') {
+          onFundTransferBalanceUpdate('shopaccounts', amt, commissionType, commissionAmount);
+        }
+        if (fundTransferForm.cashReceived === 'Yes' && fundTransferForm.addedInGala === 'Yes') {
+          onFundTransferBalanceUpdate('cash', -amt);
+        }
+      }
+    }
+    setFundTransferForm(defaultFundTransferForm);
+    setShowAddNewEntryForm(false);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const entryType = salesTabs[activeTab];
+    const amount = amounts[activeTab];
+    
+    if (!amount || parseFloat(amount) <= 0) {
+      showMessage('Please enter a valid amount', 'error');
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      // Map frontend service names to backend entry types
+      const entryTypeMapping: { [key: string]: string } = {
+        'RECHARGE ENTRY': 'RECHARGE_ENTRY',
+        'BILL PAYMENT ENTRY': 'BILL_PAYMENT_ENTRY',
+        'SIM SOLD': 'SIM_SOLD',
+        'XEROX': 'XEROX',
+        'PRINT': 'PRINT',
+        'PASSPORT PHOTOS': 'PASSPORT_PHOTOS',
+        'LAMINATIONS': 'LAMINATIONS'
+      };
+      
+      const backendEntryType = entryTypeMapping[entryType] || entryType;
+      
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      
+      const response = await apiFetch('/api/data/sales-entries', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          entryType: backendEntryType,
+          amount: parseFloat(amount),
+          remarks: `${entryType} entry`
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        await fetchEntries();
+        const newAmounts = [...amounts];
+        newAmounts[activeTab] = '';
+        setAmounts(newAmounts);
+        showMessage(`${entryType} entry saved successfully!`, 'success');
+      } else {
+        showMessage(data.message || `Failed to save ${entryType} entry`, 'error');
+      }
+    } catch (error) {
+      console.error(`Error saving ${entryType} entry:`, error);
+      showMessage('Network error. Please try again.', 'error');
+      
+      // Fallback: Update local state even on API failure
+      setDashboardEntries((prev) => [
+        { type: entryType, amount: amount, date: new Date().toISOString() },
+        ...prev
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleServiceClick = (serviceId: string) => {
+    if (serviceId === 'ADD NEW ENTRY') {
+      setShowAddNewEntryForm(true);
+      return;
+    }
+    if (serviceId === 'SHOW ENTRIES') {
+      fetchEntries(); // Refresh entries when opening modal
+      setFilterServiceType('all'); // Reset filter to show all entries
+      setShowEntriesModal(true);
+      return;
+    }
+    
+    // Handle specific form services
+    if (serviceId === 'ADD AEPS TRANSACTION') {
+      setActiveTab(0); // AEPS form
+      setSelectedService(serviceId);
+      setShowModal(true);
+      return;
+    }
+    if (serviceId === 'ADD FUND TRANSFER ENTRY') {
+      setActiveTab(1); // Fund Transfer form
+      setSelectedService(serviceId);
+      setShowModal(true);
+      return;
+    }
+    
+    const tabIndex = salesTabs.findIndex(tab => tab === serviceId);
+    setActiveTab(tabIndex);
+    setSelectedService(serviceId);
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setSelectedService("");
+  };
+
+  const handleEditEntry = (index: number) => {
+    const entry = filteredEntries[index];
+    setEditingIndex(index);
+    
+    // Set edit form based on entry type
+    if (entry.type === 'MOBILE_BALANCE') {
+      const mobileEntry = entry as Extract<DashboardEntry, { type: 'MOBILE_BALANCE' }>;
+      setEditForm({
+        type: 'MOBILE_BALANCE',
+        companyName: mobileEntry.companyName,
+        operationType: mobileEntry.operationType,
+        amount: mobileEntry.amount.toString(),
+        reason: mobileEntry.reason
+      });
+    } else if (entry.type === 'BANK_CASH_AEPS') {
+      const bankEntry = entry as Extract<DashboardEntry, { type: 'BANK_CASH_AEPS' }>;
+      setEditForm({
+        type: 'BANK_CASH_AEPS',
+        companyName: bankEntry.companyName,
+        operationType: bankEntry.operationType,
+        amount: bankEntry.amount.toString(),
+        reason: bankEntry.reason
+      });
+    } else if (entry.type === 'AEPS') {
+      const aepsEntry = entry as Extract<DashboardEntry, { type: 'AEPS' }>;
+      setEditForm({
+        type: 'AEPS',
+        aepsIdName: aepsEntry.aepsIdName,
+        amount: aepsEntry.amount.toString(),
+        commissionAmount: aepsEntry.commissionAmount.toString()
+      });
+    } else if (entry.type === 'ADD FUND TRANSFER ENTRY') {
+      const fundEntry = entry as Extract<DashboardEntry, { type: 'ADD FUND TRANSFER ENTRY' }>;
+      setEditForm({
+        type: 'ADD FUND TRANSFER ENTRY',
+        senderName: fundEntry.senderName,
+        receiverName: fundEntry.receiverName,
+        amount: fundEntry.amount.toString(),
+        transferType: fundEntry.transferType
+      });
+    } else {
+      setEditForm({
+        type: entry.type,
+        amount: entry.amount.toString()
+      });
+    }
+    
+    setShowEditModal(true);
+  };
+
+  // Map frontend entry types to backend entry types
+  const mapEntryTypeForAPI = (frontendType: string): string => {
+    const typeMapping: { [key: string]: string } = {
+      'ADD FUND TRANSFER ENTRY': 'ADD_FUND_TRANSFER_ENTRY',
+      'AEPS': 'AEPS',
+      'MOBILE_BALANCE': 'MOBILE_BALANCE',
+      'BANK_CASH_AEPS': 'BANK_CASH_AEPS',
+      'RECHARGE_ENTRY': 'RECHARGE_ENTRY',
+      'BILL_PAYMENT_ENTRY': 'BILL_PAYMENT_ENTRY',
+      'SIM_SOLD': 'SIM_SOLD',
+      'XEROX': 'XEROX',
+      'PRINT': 'PRINT',
+      'PASSPORT_PHOTOS': 'PASSPORT_PHOTOS',
+      'LAMINATIONS': 'LAMINATIONS'
+    };
+    return typeMapping[frontendType] || frontendType;
+  };
+
+  const handleDeleteEntry = async (index: number) => {
+    if (window.confirm('Are you sure you want to delete this entry?')) {
+      const entry = filteredEntries[index];
+      if (!entry._id) {
+        // For local entries without _id, remove from dashboardEntries
+        setDashboardEntries(prev => prev.filter((_, i) => i !== index));
+        showMessage('Entry deleted successfully!', 'success');
+        return;
+      }
+      
+      try {
+        const headers: any = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const backendType = mapEntryTypeForAPI(entry.type);
+        const response = await apiFetch(`/api/data/sales-entries/${encodeURIComponent(backendType)}/${entry._id}`, {
+          method: 'DELETE',
+          headers
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+          await fetchEntries();
+          showMessage('Entry deleted successfully!', 'success');
+        } else {
+          showMessage(data.message || 'Failed to delete entry', 'error');
+        }
+      } catch (error) {
+        console.error('Error deleting entry:', error);
+        // Fallback: Remove from local state when API fails
+        const entryToDelete = filteredEntries[index];
+        setDashboardEntries(prev => prev.filter(e => e !== entryToDelete));
+        showMessage('Entry removed from local view (API error occurred)', 'error');
+      }
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (editingIndex !== null && editForm) {
+      const entry = filteredEntries[editingIndex];
+      if (!entry._id) return;
+      
+      try {
+        const headers: any = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const backendType = mapEntryTypeForAPI(entry.type);
+        const response = await apiFetch(`/api/data/sales-entries/${encodeURIComponent(backendType)}/${entry._id}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({
+            entryType: mapEntryTypeForAPI(editForm.type),
+            data: editForm
+          })
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+          await fetchEntries();
+          setShowEditModal(false);
+          setEditingIndex(null);
+          setEditForm(null);
+          showMessage('Entry updated successfully!', 'success');
+        } else {
+          showMessage(data.message || 'Failed to update entry', 'error');
+        }
+      } catch (error) {
+        console.error('Error updating entry:', error);
+        showMessage('Failed to update entry', 'error');
+      }
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setShowEditModal(false);
+    setEditingIndex(null);
+    setEditForm(null);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-white p-6">
+      {/* Success/Error Messages */}
+      {success && (
+        <div className="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center space-x-2">
+          <span>✓</span>
+          <span>{success}</span>
+        </div>
+      )}
+      {error && (
+        <div className="fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center space-x-2">
+          <span>✗</span>
+          <span>{error}</span>
+        </div>
+      )}
+      
+      <div className="max-w-7xl mx-auto">
+        {/* Service Categories */}
+        {Object.entries(serviceCategories).map(([categoryName, services]) => (
+          <div key={categoryName} className="mb-8">
+            <h2 className="text-xl font-semibold mb-4 text-gray-300">{categoryName}</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {services.map((service) => (
+                <div
+                  key={service.id}
+                  onClick={() => handleServiceClick(service.id)}
+                  className="bg-white text-black rounded-lg p-4 cursor-pointer hover:shadow-lg transition-all duration-200 flex items-center space-x-3"
+                >
+                  <div className={`w-10 h-10 ${service.color} rounded-lg flex items-center justify-center text-white text-xl`}>
+                    {service.icon}
+                  </div>
+                  <span className="font-medium">{service.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {/* Modal */}
+        {showModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white text-black rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+              {/* Modal Header */}
+              <div className="bg-gradient-to-r from-blue-600 to-emerald-500 text-white p-6 rounded-t-2xl flex justify-between items-center">
+                <h2 className="text-xl font-semibold">{selectedService}</h2>
+                <button
+                  onClick={closeModal}
+                  className="text-white hover:text-gray-200 text-2xl font-bold"
+                >
+                  ×
+                </button>
+              </div>
+              {/* Modal Content */}
+               <div className="p-6">
+          {activeTab === 0 ? (
+            <form onSubmit={handleAepsSubmit} className="flex flex-col gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* AEPS ID Type */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">AEPS ID</label>
+                  <select
+                    name="aepsIdType"
+                    value={aepsForm.aepsIdType}
+                    onChange={handleAepsChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    required
+                  >
+                    <option value="">Select</option>
+                    <option value="Redmil">Redmil</option>
+                    <option value="Spicemoney">Spicemoney</option>
+                    <option value="Airtel Payment Bank">Airtel Payment Bank</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                {/* AEPS ID Name if Other */}
+                {aepsForm.aepsIdType === 'Other' && (
+                  <div>
+                    <label className="block text-sm font-semibold mb-1">Other ID Name</label>
+                    <input
+                      name="aepsIdName"
+                      value={aepsForm.aepsIdName}
+                      onChange={handleAepsChange}
+                      className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      placeholder="Enter ID Name"
+                      required
+                    />
+                  </div>
+                )}
+                {/* Amount */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Amount</label>
+                  <input
+                    name="amount"
+                    type="number"
+                    value={aepsForm.amount}
+                    onChange={handleAepsChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    min="0"
+                    required
+                  />
+                </div>
+                {/* How Money Given Customer */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">How Money Given Customer</label>
+                  <select
+                    name="givenToCustomer"
+                    value={aepsForm.givenToCustomer}
+                    onChange={handleAepsChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    required
+                  >
+                    <option value="">Select</option>
+                    <option value="Online">Online</option>
+                    <option value="Cash from Gala">Cash from Gala</option>
+                    <option value="Other">Other</option>
+                    <option value="Withdrawn from ID">Withdrawn from ID and Given to Customer</option>
+                  </select>
+                </div>
+                {/* Remark for Online + Payment Application/Transferred From */}
+                {aepsForm.givenToCustomer === 'Online' && (
+                  <>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold mb-1">Online Remark</label>
+                    <input
+                      name="givenToCustomerRemark"
+                      value={aepsForm.givenToCustomerRemark}
+                      onChange={handleAepsChange}
+                      className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      placeholder="Enter Remark"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold mb-1">Payment Application</label>
+                    <select
+                      name="paymentApplication"
+                      value={aepsForm.paymentApplication || ''}
+                      onChange={handleAepsChange}
+                      className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      required
+                    >
+                      <option value="">Select</option>
+                      <option value="PhonePe">PhonePe</option>
+                      <option value="Paytm">Paytm</option>
+                      <option value="Google Pay">Google Pay</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold mb-1">Transferred From</label>
+                    <select
+                      name="transferredFrom"
+                      value={aepsForm.transferredFrom || ''}
+                      onChange={handleAepsChange}
+                      className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      required
+                    >
+                      <option value="">Select</option>
+                      <option value="Vaibhav">Vaibhav</option>
+                      <option value="Omkar">Omkar</option>
+                      <option value="Uma">Uma</option>
+                      <option value="Shop Accounts">Shop Accounts</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  {aepsForm.transferredFrom === 'Other' && (
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">Other Remark</label>
+                      <input
+                        name="transferredFromRemark"
+                        value={aepsForm.transferredFromRemark || ''}
+                        onChange={handleAepsChange}
+                        className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        placeholder="Enter Remark"
+                        required
+                      />
+                    </div>
+                  )}
+                  </>
+                )}
+                {/* Other Details */}
+                {aepsForm.givenToCustomer === 'Other' && (
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold mb-1">Other Details</label>
+                    <input
+                      name="givenToCustomerOther"
+                      value={aepsForm.givenToCustomerOther}
+                      onChange={handleAepsChange}
+                      className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      placeholder="Enter Details"
+                    />
+                  </div>
+                )}
+                {/* Withdrawn Type (shown only if selected) */}
+                {aepsForm.givenToCustomer === 'Withdrawn from ID' && (
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold mb-1">Withdrawn from ID and Given to Customer</label>
+                    <input
+                      name="withdrawnType"
+                      value={aepsForm.withdrawnType}
+                      onChange={handleAepsChange}
+                      className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      placeholder="Enter Details (optional)"
+                    />
+                  </div>
+                )}
+                {/* Commission Type */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Commission</label>
+                  <select
+                    name="commissionType"
+                    value={aepsForm.commissionType}
+                    onChange={handleAepsChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    required
+                  >
+                    <option value="">Select</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Online">Online</option>
+                  </select>
+                </div>
+                {/* Commission Amount */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Commission Amount</label>
+                  <input
+                    name="commissionAmount"
+                    type="number"
+                    value={aepsForm.commissionAmount}
+                    onChange={handleAepsChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    min="0"
+                    placeholder="Enter Commission Amount"
+                    required
+                  />
+                </div>
+                {/* Commission Remark */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Commission Remark</label>
+                  <input
+                    name="commissionRemark"
+                    value={aepsForm.commissionRemark}
+                    onChange={handleAepsChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    placeholder="Enter Remark (optional)"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className={`w-full py-3 rounded-lg font-semibold text-lg shadow-md transition-all ${
+                  loading
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-blue-600 to-emerald-500 text-white hover:from-blue-700 hover:to-emerald-600'
+                }`}
+              >
+                {loading ? 'Saving...' : 'Add AEPS Entry'}
+              </button>
+            </form>
+          ) : activeTab === 1 ? (
+            <form onSubmit={handleFundTransferSubmit} className="flex flex-col gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Customer Name */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Customer Name</label>
+                  <input
+                    name="customerName"
+                    value={fundTransferForm.customerName}
+                    onChange={handleFundTransferChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    placeholder="Enter customer name"
+                    required
+                  />
+                </div>
+                {/* Customer Number */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Customer Number</label>
+                  <input
+                    name="customerNumber"
+                    value={fundTransferForm.customerNumber}
+                    onChange={handleFundTransferChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    placeholder="Enter customer number"
+                    required
+                  />
+                </div>
+                {/* Beneficiary Name */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Beneficiary Name</label>
+                  <input
+                    name="beneficiaryName"
+                    value={fundTransferForm.beneficiaryName}
+                    onChange={handleFundTransferChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    placeholder="Enter beneficiary name"
+                    required
+                  />
+                </div>
+                {/* Beneficiary Number */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Beneficiary Number</label>
+                  <input
+                    name="beneficiaryNumber"
+                    value={fundTransferForm.beneficiaryNumber}
+                    onChange={handleFundTransferChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    placeholder="Enter beneficiary number"
+                    required
+                  />
+                </div>
+                {/* Application Name */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Application Name</label>
+                  <select
+                    name="applicationName"
+                    value={fundTransferForm.applicationName}
+                    onChange={handleFundTransferChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    required
+                  >
+                    <option value="">Select</option>
+                    <option value="PhonePe">PhonePe</option>
+                    <option value="Paytm">Paytm</option>
+                    <option value="Google Pay">Google Pay</option>
+                  </select>
+                </div>
+                {/* Transferred From */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Transferred From</label>
+                  <select
+                    name="transferredFrom"
+                    value={fundTransferForm.transferredFrom}
+                    onChange={handleFundTransferChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    required
+                  >
+                    <option value="">Select</option>
+                    <option value="Vaibhav">Vaibhav</option>
+                    <option value="Omkar">Omkar</option>
+                    <option value="Uma">Uma</option>
+                    <option value="Shop Accounts">Shop Accounts</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                {/* Remark for Other */}
+                {fundTransferForm.transferredFrom === 'Other' && (
+                  <div>
+                    <label className="block text-sm font-semibold mb-1">Other Remark</label>
+                    <input
+                      name="transferredFromRemark"
+                      value={fundTransferForm.transferredFromRemark}
+                      onChange={handleFundTransferChange}
+                      className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      placeholder="Enter Remark"
+                      required
+                    />
+                  </div>
+                )}
+                {/* Amount */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Amount</label>
+                  <input
+                    name="amount"
+                    type="number"
+                    value={fundTransferForm.amount}
+                    onChange={handleFundTransferChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    min="0"
+                    required
+                  />
+                </div>
+                {/* Cash Received */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Cash Received</label>
+                  <select
+                    name="cashReceived"
+                    value={fundTransferForm.cashReceived}
+                    onChange={handleFundTransferChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    required
+                  >
+                    <option value="">Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                {/* Added in Gala */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Added in Gala</label>
+                  <select
+                    name="addedInGala"
+                    value={fundTransferForm.addedInGala}
+                    onChange={handleFundTransferChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    required
+                  >
+                    <option value="">Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                {/* Remark for Not Added in Gala */}
+                {fundTransferForm.addedInGala === 'No' && (
+                  <div>
+                    <label className="block text-sm font-semibold mb-1">Remark (Not Added in Gala)</label>
+                    <input
+                      name="addedInGalaRemark"
+                      value={fundTransferForm.addedInGalaRemark}
+                      onChange={handleFundTransferChange}
+                      className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      placeholder="Enter Remark"
+                      required
+                    />
+                  </div>
+                )}
+                {/* Commission Type */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Commission Type</label>
+                  <select
+                    name="commissionType"
+                    value={fundTransferForm.commissionType}
+                    onChange={handleFundTransferChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    required
+                  >
+                    <option value="">Select</option>
+                    <option value="Online">Online</option>
+                    <option value="Cash">Cash</option>
+                  </select>
+                </div>
+                {/* Commission Amount */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Commission Amount</label>
+                  <input
+                    name="commissionAmount"
+                    type="number"
+                    value={fundTransferForm.commissionAmount}
+                    onChange={handleFundTransferChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    min="0"
+                    placeholder="Enter Commission Amount"
+                    required
+                  />
+                </div>
+                {/* Commission Remark */}
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Commission Remark</label>
+                  <input
+                    name="commissionRemark"
+                    value={fundTransferForm.commissionRemark}
+                    onChange={handleFundTransferChange}
+                    className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    placeholder="Enter Remark (optional)"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className={`w-full py-3 rounded-lg font-semibold text-lg shadow-md transition-all ${
+                  loading
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-blue-600 to-emerald-500 text-white hover:from-blue-700 hover:to-emerald-600'
+                }`}
+              >
+                {loading ? 'Saving...' : 'Add Fund Transfer Entry'}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+              <div>
+                <label className="block text-lg font-bold text-blue-700 mb-2 tracking-wide text-center">
+                  {salesTabs[activeTab]}
+                </label>
+                <input
+                  type="number"
+                  className="w-full border-2 border-blue-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-blue-50 text-lg rounded-lg px-4 py-3 transition-all outline-none shadow-sm"
+                  placeholder="Enter amount"
+                  value={amounts[activeTab]}
+                  onChange={handleAmountChange}
+                  min="0"
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className={`w-full py-3 rounded-lg font-semibold text-lg shadow-md transition-all ${
+                  loading
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-blue-600 to-emerald-500 text-white hover:from-blue-700 hover:to-emerald-600'
+                }`}
+              >
+                {loading ? 'Saving...' : 'Add Amount'}
+              </button>
+            </form>
+          )}
+
+               </div>
+             </div>
+           </div>
+         )}
+
+        {/* ADD NEW ENTRY Modal */}
+        {showAddNewEntryForm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white text-black rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="bg-gradient-to-r from-purple-600 to-indigo-500 text-white p-6 rounded-t-2xl flex justify-between items-center">
+                <h2 className="text-xl font-semibold">ADD NEW ENTRY</h2>
+                <button
+                  onClick={() => setShowAddNewEntryForm(false)}
+                  className="text-white hover:text-gray-200 text-2xl font-bold"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="p-6">
+                {/* Entry Type Selection */}
+                <div className="mb-6">
+                  <label className="block text-sm font-semibold mb-3">Select Entry Type</label>
+                  <div className="flex gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setAddNewEntryType('mobile')}
+                      className={`px-4 py-2 rounded-lg font-medium ${
+                        addNewEntryType === 'mobile'
+                          ? 'bg-purple-500 text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      Mobile Balances
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddNewEntryType('bank')}
+                      className={`px-4 py-2 rounded-lg font-medium ${
+                        addNewEntryType === 'bank'
+                          ? 'bg-purple-500 text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      Bank / Cash / AEPS Apps
+                    </button>
+                  </div>
+                </div>
+
+                {/* Mobile Balances Form */}
+                {addNewEntryType === 'mobile' && (
+                  <form onSubmit={handleMobileBalanceSubmit} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">Company Name</label>
+                      <select
+                        name="companyName"
+                        value={mobileBalanceForm.companyName}
+                        onChange={handleMobileBalanceChange}
+                        className="w-full border-2 border-purple-200 rounded-lg px-3 py-2 bg-purple-50 focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                        required
+                      >
+                        <option value="">Select Company</option>
+                        <option value="AIRTEL">AIRTEL</option>
+                        <option value="JIO">JIO</option>
+                        <option value="BSNL">BSNL</option>
+                        <option value="VODAFONE">VODAFONE</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">Operation Type</label>
+                      <div className="flex gap-4">
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="operationType"
+                            value="add"
+                            checked={mobileBalanceForm.operationType === 'add'}
+                            onChange={handleMobileBalanceChange}
+                            className="mr-2"
+                            required
+                          />
+                          Add Amount
+                        </label>
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="operationType"
+                            value="remove"
+                            checked={mobileBalanceForm.operationType === 'remove'}
+                            onChange={handleMobileBalanceChange}
+                            className="mr-2"
+                            required
+                          />
+                          Remove Amount
+                        </label>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">Amount</label>
+                      <input
+                        name="amount"
+                        type="number"
+                        value={mobileBalanceForm.amount}
+                        onChange={handleMobileBalanceChange}
+                        className="w-full border-2 border-purple-200 rounded-lg px-3 py-2 bg-purple-50 focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                        min="0"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">Reason</label>
+                      <input
+                        name="reason"
+                        type="text"
+                        value={mobileBalanceForm.reason}
+                        onChange={handleMobileBalanceChange}
+                        className="w-full border-2 border-purple-200 rounded-lg px-3 py-2 bg-purple-50 focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                        placeholder="Enter reason/remarks"
+                        required
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className={`w-full py-2 px-4 rounded-lg transition-colors ${
+                        loading
+                          ? 'bg-gray-400 cursor-not-allowed'
+                          : 'bg-purple-500 text-white hover:bg-purple-600'
+                      }`}
+                    >
+                      {loading ? 'Saving...' : 'Add Mobile Balance Entry'}
+                    </button>
+                  </form>
+                )}
+
+                {/* Bank/Cash/AEPS Form */}
+                {addNewEntryType === 'bank' && (
+                  <form onSubmit={handleBankCashAepsSubmit} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">Company / Bank Name</label>
+                      <select
+                        name="companyName"
+                        value={bankCashAepsForm.companyName}
+                        onChange={handleBankCashAepsChange}
+                        className="w-full border-2 border-indigo-200 rounded-lg px-3 py-2 bg-indigo-50 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                        required
+                      >
+                        <option value="">Select Company/Bank</option>
+                        <option value="Bank">Bank</option>
+                        <option value="Cash">Cash</option>
+                        <option value="Redmil">Redmil</option>
+                        <option value="SpiceMoney">SpiceMoney</option>
+                        <option value="Airtel Payment Bank">Airtel Payment Bank</option>
+                        <option value="Collect From Vaibhav">Collect From Vaibhav</option>
+                        <option value="Collect From Omkar">Collect From Omkar</option>
+                        <option value="Collect From Uma">Collect From Uma</option>
+                        <option value="Shop QR">Shop QR</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">Operation Type</label>
+                      <div className="flex gap-4">
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="operationType"
+                            value="add"
+                            checked={bankCashAepsForm.operationType === 'add'}
+                            onChange={handleBankCashAepsChange}
+                            className="mr-2"
+                            required
+                          />
+                          Add Amount
+                        </label>
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="operationType"
+                            value="remove"
+                            checked={bankCashAepsForm.operationType === 'remove'}
+                            onChange={handleBankCashAepsChange}
+                            className="mr-2"
+                            required
+                          />
+                          Remove Amount
+                        </label>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">Amount</label>
+                      <input
+                        name="amount"
+                        type="number"
+                        value={bankCashAepsForm.amount}
+                        onChange={handleBankCashAepsChange}
+                        className="w-full border-2 border-indigo-200 rounded-lg px-3 py-2 bg-indigo-50 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                        min="0"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-1">Reason</label>
+                      <input
+                        name="reason"
+                        type="text"
+                        value={bankCashAepsForm.reason}
+                        onChange={handleBankCashAepsChange}
+                        className="w-full border-2 border-indigo-200 rounded-lg px-3 py-2 bg-indigo-50 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                        placeholder="Enter reason/remarks"
+                        required
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className={`w-full py-2 px-4 rounded-lg transition-colors ${
+                        loading
+                          ? 'bg-gray-400 cursor-not-allowed'
+                          : 'bg-indigo-500 text-white hover:bg-indigo-600'
+                      }`}
+                    >
+                      {loading ? 'Saving...' : 'Add Bank/Cash/AEPS Entry'}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* SHOW ENTRIES Modal */}
+        {showEntriesModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white text-black rounded-2xl shadow-2xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="bg-gradient-to-r from-indigo-600 to-blue-500 text-white p-6 rounded-t-2xl flex justify-between items-center">
+                <h2 className="text-xl font-semibold">All Entries</h2>
+                <button
+                  onClick={() => setShowEntriesModal(false)}
+                  className="text-white hover:text-gray-200 text-2xl font-bold"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="p-6">
+                {/* Filter Controls */}
+                <div className="mb-6 bg-gray-50 p-4 rounded-lg">
+                  <h3 className="text-lg font-semibold mb-4 text-gray-700">Filter Entries</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">From Date</label>
+                      <input
+                        type="date"
+                        value={filterDateFrom}
+                        onChange={(e) => setFilterDateFrom(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">To Date</label>
+                      <input
+                        type="date"
+                        value={filterDateTo}
+                        onChange={(e) => setFilterDateTo(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Service Type</label>
+                      <select
+                        value={filterServiceType}
+                        onChange={(e) => setFilterServiceType(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      >
+                        <option value="all">All Types</option>
+                        <option value="MOBILE_BALANCE">Mobile Balance</option>
+                        <option value="BANK_CASH_AEPS">Bank/Cash/AEPS</option>
+                        <option value="AEPS">AEPS Transaction</option>
+                        <option value="ADD FUND TRANSFER ENTRY">Fund Transfer</option>
+                        <option value="RECHARGE_ENTRY">Recharge Entry</option>
+                        <option value="BILL_PAYMENT_ENTRY">Bill Payment Entry</option>
+                        <option value="SIM_SOLD">SIM Sold</option>
+                        <option value="XEROX">Xerox</option>
+                        <option value="PRINT">Print</option>
+                        <option value="PASSPORT_PHOTOS">Passport Photos</option>
+                        <option value="LAMINATIONS">Laminations</option>
+                        <option value="other">Other Services</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      onClick={() => {
+                        setFilterDateFrom('');
+                        setFilterDateTo('');
+                        setFilterServiceType('all');
+                      }}
+                      className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                    >
+                      Clear Filters
+                    </button>
+                  </div>
+                </div>
+
+                <>
+                  <div className="mb-4 text-sm text-gray-600">
+                    Showing {filteredEntries.length} of {entries.length} entries
+                  </div>
+                  {filteredEntries.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                          <p>No entries match the selected filters</p>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse border border-gray-300">
+                            <thead>
+                              <tr className="bg-gray-100">
+                                <th className="border border-gray-300 px-4 py-2 text-left">Type</th>
+                                <th className="border border-gray-300 px-4 py-2 text-left">Amount</th>
+                                <th className="border border-gray-300 px-4 py-2 text-left">Details</th>
+                                <th className="border border-gray-300 px-4 py-2 text-left">Date</th>
+                                <th className="border border-gray-300 px-4 py-2 text-left">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                               {filteredEntries.map((entry, idx) => {
+                                 if (entry.type === 'MOBILE_BALANCE') {
+                                   const mobileEntry = entry as Extract<DashboardEntry, { type: 'MOBILE_BALANCE' }>;
+                                   return (
+                                     <tr key={idx} className="hover:bg-gray-50">
+                                       <td className="border border-gray-300 px-4 py-2">Mobile Balance</td>
+                                       <td className="border border-gray-300 px-4 py-2">₹{mobileEntry.amount}</td>
+                                       <td className="border border-gray-300 px-4 py-2">
+                                         <div>
+                                           <div><strong>Company:</strong> {mobileEntry.companyName}</div>
+                                           <div><strong>Operation:</strong> {mobileEntry.operationType}</div>
+                                           <div><strong>Reason:</strong> {mobileEntry.reason}</div>
+                                         </div>
+                                       </td>
+                                       <td className="border border-gray-300 px-4 py-2">{entry.date ? new Date(entry.date).toLocaleDateString() : new Date().toLocaleDateString()}</td>
+                                       <td className="border border-gray-300 px-4 py-2">
+                                         <div className="flex gap-2">
+                                           <button
+                                             onClick={() => handleEditEntry(idx)}
+                                             className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                           >
+                                             Edit
+                                           </button>
+                                           <button
+                                             onClick={() => handleDeleteEntry(idx)}
+                                             className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                           >
+                                             Delete
+                                           </button>
+                                         </div>
+                                       </td>
+                                     </tr>
+                                   );
+                                 } else if (entry.type === 'BANK_CASH_AEPS') {
+                                   const bankEntry = entry as Extract<DashboardEntry, { type: 'BANK_CASH_AEPS' }>;
+                                   return (
+                                     <tr key={idx} className="hover:bg-gray-50">
+                                       <td className="border border-gray-300 px-4 py-2">Bank/Cash/AEPS</td>
+                                       <td className="border border-gray-300 px-4 py-2">₹{bankEntry.amount}</td>
+                                       <td className="border border-gray-300 px-4 py-2">
+                                         <div>
+                                           <div><strong>Company:</strong> {bankEntry.companyName}</div>
+                                           <div><strong>Operation:</strong> {bankEntry.operationType}</div>
+                                           <div><strong>Reason:</strong> {bankEntry.reason}</div>
+                                         </div>
+                                       </td>
+                                       <td className="border border-gray-300 px-4 py-2">{entry.date ? new Date(entry.date).toLocaleDateString() : new Date().toLocaleDateString()}</td>
+                                       <td className="border border-gray-300 px-4 py-2">
+                                         <div className="flex gap-2">
+                                           <button
+                                             onClick={() => handleEditEntry(idx)}
+                                             className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                           >
+                                             Edit
+                                           </button>
+                                           <button
+                                             onClick={() => handleDeleteEntry(idx)}
+                                             className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                           >
+                                             Delete
+                                           </button>
+                                         </div>
+                                       </td>
+                                     </tr>
+                                   );
+                                 } else if (entry.type === 'AEPS') {
+                                   const aepsEntry = entry as Extract<DashboardEntry, { type: 'AEPS' }>;
+                                   return (
+                                     <tr key={idx} className="hover:bg-gray-50">
+                                       <td className="border border-gray-300 px-4 py-2">AEPS Transaction</td>
+                                       <td className="border border-gray-300 px-4 py-2">₹{aepsEntry.amount}</td>
+                                       <td className="border border-gray-300 px-4 py-2">
+                                         <div>
+                                           <div><strong>ID Type:</strong> {aepsEntry.aepsIdType}</div>
+                                           <div><strong>ID Name:</strong> {aepsEntry.aepsIdName}</div>
+                                           <div><strong>Commission:</strong> ₹{aepsEntry.commissionAmount}</div>
+                                         </div>
+                                       </td>
+                                       <td className="border border-gray-300 px-4 py-2">{entry.date ? new Date(entry.date).toLocaleDateString() : new Date().toLocaleDateString()}</td>
+                                       <td className="border border-gray-300 px-4 py-2">
+                                         <div className="flex gap-2">
+                                           <button
+                                             onClick={() => handleEditEntry(idx)}
+                                             className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                           >
+                                             Edit
+                                           </button>
+                                           <button
+                                             onClick={() => handleDeleteEntry(idx)}
+                                             className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                           >
+                                             Delete
+                                           </button>
+                                         </div>
+                                       </td>
+                                     </tr>
+                                   );
+                                 } else if (entry.type === 'ADD FUND TRANSFER ENTRY') {
+                                   const fundEntry = entry as Extract<DashboardEntry, { type: 'ADD FUND TRANSFER ENTRY' }>;
+                                   return (
+                                     <tr key={idx} className="hover:bg-gray-50">
+                                       <td className="border border-gray-300 px-4 py-2">Fund Transfer</td>
+                                       <td className="border border-gray-300 px-4 py-2">₹{fundEntry.amount}</td>
+                                       <td className="border border-gray-300 px-4 py-2">
+                                         <div>
+                                           <div><strong>Customer:</strong> {fundEntry.customerName}</div>
+                                           <div><strong>Beneficiary:</strong> {fundEntry.beneficiaryName}</div>
+                                           <div><strong>Application:</strong> {fundEntry.applicationName}</div>
+                                         </div>
+                                       </td>
+                                       <td className="border border-gray-300 px-4 py-2">{entry.date ? new Date(entry.date).toLocaleDateString() : new Date().toLocaleDateString()}</td>
+                                       <td className="border border-gray-300 px-4 py-2">
+                                         <div className="flex gap-2">
+                                           <button
+                                             onClick={() => handleEditEntry(idx)}
+                                             className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                           >
+                                             Edit
+                                           </button>
+                                           <button
+                                             onClick={() => handleDeleteEntry(idx)}
+                                             className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                           >
+                                             Delete
+                                           </button>
+                                         </div>
+                                       </td>
+                                     </tr>
+                                   );
+                                 } else {
+                                   // Handle new entry types from SalesEntry model
+                                   const getEntryTypeDisplay = (type: string) => {
+                                     switch (type) {
+                                       case 'RECHARGE_ENTRY': return 'Recharge Entry';
+                                       case 'BILL_PAYMENT_ENTRY': return 'Bill Payment Entry';
+                                       case 'SIM_SOLD': return 'SIM Sold';
+                                       case 'XEROX': return 'Xerox';
+                                       case 'PRINT': return 'Print';
+                                       case 'PASSPORT_PHOTOS': return 'Passport Photos';
+                                       case 'LAMINATIONS': return 'Laminations';
+                                       default: return type;
+                                     }
+                                   };
+                                   
+                                   const getEntryDetails = (entry: any) => {
+                                     if (entry.customerName || entry.customerNumber) {
+                                       return (
+                                         <div>
+                                           {entry.customerName && <div><strong>Customer:</strong> {entry.customerName}</div>}
+                                           {entry.customerNumber && <div><strong>Number:</strong> {entry.customerNumber}</div>}
+                                           {entry.quantity && <div><strong>Quantity:</strong> {entry.quantity}</div>}
+                                           {entry.remarks && <div><strong>Remarks:</strong> {entry.remarks}</div>}
+                                         </div>
+                                       );
+                                     }
+                                     return '-';
+                                   };
+                                   
+                                   return (
+                                     <tr key={idx} className="hover:bg-gray-50">
+                                       <td className="border border-gray-300 px-4 py-2">{getEntryTypeDisplay(entry.type)}</td>
+                                       <td className="border border-gray-300 px-4 py-2">₹{entry.amount}</td>
+                                       <td className="border border-gray-300 px-4 py-2">{getEntryDetails(entry)}</td>
+                                       <td className="border border-gray-300 px-4 py-2">{entry.date ? new Date(entry.date).toLocaleDateString() : new Date().toLocaleDateString()}</td>
+                                       <td className="border border-gray-300 px-4 py-2">
+                                         <div className="flex gap-2">
+                                           <button
+                                             onClick={() => handleEditEntry(idx)}
+                                             className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                           >
+                                             Edit
+                                           </button>
+                                           <button
+                                             onClick={() => handleDeleteEntry(idx)}
+                                             className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                           >
+                                             Delete
+                                           </button>
+                                         </div>
+                                       </td>
+                                     </tr>
+                                   );
+                                 }
+                               })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                </>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Entry Modal */}
+        {showEditModal && editForm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Edit Entry</h3>
+                <button
+                  onClick={handleCancelEdit}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                {editForm.type === 'MOBILE_BALANCE' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Company Name
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.companyName || ''}
+                        onChange={(e) => setEditForm({...editForm, companyName: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Operation Type
+                      </label>
+                      <select
+                        value={editForm.operationType || 'add'}
+                        onChange={(e) => setEditForm({...editForm, operationType: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+                      >
+                        <option value="add">Add</option>
+                        <option value="remove">Remove</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Amount
+                      </label>
+                      <input
+                        type="number"
+                        value={editForm.amount}
+                        onChange={(e) => setEditForm({...editForm, amount: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Reason
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.reason || ''}
+                        onChange={(e) => setEditForm({...editForm, reason: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                  </>
+                )}
+                
+                {editForm.type === 'BANK_CASH_AEPS' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Company Name
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.companyName || ''}
+                        onChange={(e) => setEditForm({...editForm, companyName: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Operation Type
+                      </label>
+                      <select
+                        value={editForm.operationType || 'add'}
+                        onChange={(e) => setEditForm({...editForm, operationType: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+                      >
+                        <option value="add">Add</option>
+                        <option value="remove">Remove</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Amount
+                      </label>
+                      <input
+                        type="number"
+                        value={editForm.amount}
+                        onChange={(e) => setEditForm({...editForm, amount: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Reason
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.reason || ''}
+                        onChange={(e) => setEditForm({...editForm, reason: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                  </>
+                )}
+                
+                {editForm.type === 'AEPS' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        AEPS ID Name
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.aepsIdName || ''}
+                        onChange={(e) => setEditForm({...editForm, aepsIdName: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Amount
+                      </label>
+                      <input
+                        type="number"
+                        value={editForm.amount}
+                        onChange={(e) => setEditForm({...editForm, amount: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Commission Amount
+                      </label>
+                      <input
+                        type="number"
+                        value={editForm.commissionAmount || ''}
+                        onChange={(e) => setEditForm({...editForm, commissionAmount: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                  </>
+                )}
+                
+                {editForm.type === 'ADD FUND TRANSFER ENTRY' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Sender Name
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.senderName || ''}
+                        onChange={(e) => setEditForm({...editForm, senderName: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Receiver Name
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.receiverName || ''}
+                        onChange={(e) => setEditForm({...editForm, receiverName: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Amount
+                      </label>
+                      <input
+                        type="number"
+                        value={editForm.amount}
+                        onChange={(e) => setEditForm({...editForm, amount: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Transfer Type
+                      </label>
+                      <select
+                        value={editForm.transferType || 'IMPS'}
+                        onChange={(e) => setEditForm({...editForm, transferType: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+                      >
+                        <option value="IMPS">IMPS</option>
+                        <option value="NEFT">NEFT</option>
+                        <option value="RTGS">RTGS</option>
+                        <option value="UPI">UPI</option>
+                      </select>
+                    </div>
+                  </>
+                )}
+                
+                {!['MOBILE_BALANCE', 'BANK_CASH_AEPS', 'AEPS', 'ADD FUND TRANSFER ENTRY'].includes(editForm.type) && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Amount
+                    </label>
+                    <input
+                      type="number"
+                      value={editForm.amount}
+                      onChange={(e) => setEditForm({...editForm, amount: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900"
+                    />
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  onClick={handleCancelEdit}
+                  className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveEdit}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+       </div>
+     </div>
+   );
+};
+
+export default Sales;

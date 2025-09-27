@@ -50,6 +50,164 @@ function App() {
       return updated;
     });
   };
+
+  // Handler to update Mobile Balances
+  const handleMobileBalanceUpdate = (
+    companyName: string,
+    operationType: 'add' | 'remove',
+    amount: number
+  ) => {
+    setMobileBalances(prev => {
+      const updated = { ...prev };
+      const adjustedAmount = operationType === 'add' ? amount : -amount;
+      
+      switch (companyName.toLowerCase()) {
+        case 'airtel':
+          updated.airtel += adjustedAmount;
+          break;
+        case 'jio':
+          updated.jio += adjustedAmount;
+          break;
+        case 'bsnl':
+          updated.bsnl += adjustedAmount;
+          break;
+        case 'vodafone':
+          updated.vodafone += adjustedAmount;
+          break;
+      }
+      return updated;
+    });
+  };
+
+  // Handler to update Bank/Cash/AEPS Balances
+  const handleBankCashAepsUpdate = (
+    companyName: string,
+    operationType: 'add' | 'remove',
+    amount: number
+  ) => {
+    setBankBalances(prev => {
+      const updated = { ...prev };
+      const adjustedAmount = operationType === 'add' ? amount : -amount;
+      
+      switch (companyName.toLowerCase()) {
+        case 'bank':
+          updated.bank += adjustedAmount;
+          break;
+        case 'cash':
+          updated.cash += adjustedAmount;
+          break;
+        case 'redmil':
+          updated.redmil += adjustedAmount;
+          break;
+        case 'spicemoney':
+          updated.spicemoney += adjustedAmount;
+          break;
+        case 'airtel payment bank':
+          updated.airtelpmt += adjustedAmount;
+          break;
+        case 'collect from vaibhav':
+          updated.vaibhav += adjustedAmount;
+          break;
+        case 'collect from omkar':
+          updated.omkar += adjustedAmount;
+          break;
+        case 'collect from uma':
+          updated.uma += adjustedAmount;
+          break;
+        case 'shop qr':
+          updated.shopqr += adjustedAmount;
+          break;
+      }
+      return updated;
+    });
+  };
+
+  // Function to calculate balances from sales entries
+  const calculateBalancesFromEntries = (entries: any[]) => {
+    const newMobileBalances = {
+      paytm: 0,
+      phonepe: 0,
+      googlePay: 0,
+      airtel: 0,
+      jio: 0,
+      bsnl: 0,
+      vodafone: 0
+    };
+
+    const newBankBalances = {
+      sbi: 0,
+      hdfc: 0,
+      icici: 0,
+      bank: 0,
+      cash: 0,
+      redmil: 0,
+      spicemoney: 0,
+      airtelpmt: 0,
+      vaibhav: 0,
+      omkar: 0,
+      uma: 0,
+      shopqr: 0
+    };
+
+    entries.forEach((entry: any) => {
+      const amount = parseFloat(entry.amount || '0');
+      const isAdd = entry.operationType === 'add';
+      const adjustedAmount = isAdd ? amount : -amount;
+
+      if (entry.type === 'MOBILE_BALANCE' || entry.entryType === 'MOBILE_BALANCE') {
+        const company = (entry.companyName || '').toLowerCase();
+        switch (company) {
+          case 'airtel':
+            newMobileBalances.airtel += adjustedAmount;
+            break;
+          case 'jio':
+            newMobileBalances.jio += adjustedAmount;
+            break;
+          case 'bsnl':
+            newMobileBalances.bsnl += adjustedAmount;
+            break;
+          case 'vodafone':
+            newMobileBalances.vodafone += adjustedAmount;
+            break;
+        }
+      } else if (entry.type === 'BANK_CASH_AEPS' || entry.entryType === 'BANK_CASH_AEPS') {
+        const company = (entry.companyName || '').toLowerCase();
+        switch (company) {
+          case 'bank':
+            newBankBalances.bank += adjustedAmount;
+            break;
+          case 'cash':
+            newBankBalances.cash += adjustedAmount;
+            break;
+          case 'redmil':
+            newBankBalances.redmil += adjustedAmount;
+            break;
+          case 'spicemoney':
+            newBankBalances.spicemoney += adjustedAmount;
+            break;
+          case 'airtel payment bank':
+            newBankBalances.airtelpmt += adjustedAmount;
+            break;
+          case 'collect from vaibhav':
+            newBankBalances.vaibhav += adjustedAmount;
+            break;
+          case 'collect from omkar':
+            newBankBalances.omkar += adjustedAmount;
+            break;
+          case 'collect from uma':
+            newBankBalances.uma += adjustedAmount;
+            break;
+          case 'shop qr':
+            newBankBalances.shopqr += adjustedAmount;
+            break;
+        }
+      }
+    });
+
+    setMobileBalances(newMobileBalances);
+    setBankBalances(prev => ({ ...prev, ...newBankBalances }));
+  };
+
   // Persisted dashboard entries for Sales
   const [dashboardEntries, setDashboardEntries] = useState<DashboardEntry[]>([]);
   // Edit client handler (persist)
@@ -171,6 +329,17 @@ function App() {
     shopqr: 0
   });
 
+  // Mobile balances state
+  const [mobileBalances, setMobileBalances] = useState({
+    paytm: 0,
+    phonepe: 0,
+    googlePay: 0,
+    airtel: 0,
+    jio: 0,
+    bsnl: 0,
+    vodafone: 0
+  });
+
   const dashboardStats = {
     totalTasks: tasks.length,
     completedTasks: tasks.filter(t => t.status === 'completed').length,
@@ -199,15 +368,7 @@ function App() {
       IMT: tasks.filter(t => t.taskType === 'do-now' && t.status !== 'completed').length,
       URT: tasks.filter(t => t.taskType === 'urgent' && t.status !== 'completed').length
     },
-    mobileBalances: {
-      paytm: 0,
-      phonepe: 0,
-      googlePay: 0,
-      airtel: 0,
-      jio: 0,
-      bsnl: 0,
-      vodafone: 0
-    },
+    mobileBalances,
     bankBalances,
     today: {
       tasks: 0,
@@ -467,7 +628,7 @@ function App() {
             const [clientsRes, tasksRes, fundRes, servicesRes] = await Promise.all([
               apiFetch('/api/data/clients', { headers }),
               apiFetch('/api/data/tasks', { headers }),
-              apiFetch('/api/data/fund-transfers', { headers }),
+              apiFetch('/api/data/sales-entries', { headers }),
               apiFetch('/api/data/services', { headers })
             ]);
             const clientsJson = await clientsRes.json();
@@ -505,24 +666,48 @@ function App() {
             if (servicesJson?.success) setServices((servicesJson.data.services || []).map((s:any)=>({ id: s._id, name: s.name, amount: s.amount || 0 })));
             if (fundJson?.success) {
               const entries = (fundJson.data.entries || []) as any[];
-              const mappedEntries: DashboardEntry[] = entries.map((e: any) => ({
-                type: 'ADD FUND TRANSFER ENTRY',
-                customerName: e.customerName,
-                customerNumber: e.customerNumber,
-                beneficiaryName: e.beneficiaryName,
-                beneficiaryNumber: e.beneficiaryNumber,
-                applicationName: e.applicationName,
-                transferredFrom: e.transferredFrom,
-                transferredFromRemark: e.transferredFromRemark || '',
-                amount: String(e.amount ?? ''),
-                cashReceived: e.cashReceived,
-                addedInGala: e.addedInGala,
-                addedInGalaRemark: e.addedInGalaRemark || '',
-                commissionType: e.commissionType,
-                commissionAmount: String(e.commissionAmount ?? ''),
-                commissionRemark: e.commissionRemark || ''
-              }));
-              setDashboardEntries(mappedEntries);
+              const mappedEntries: DashboardEntry[] = entries.map((e: any) => {
+                if (e.type === 'Fund Transfer') {
+                  return {
+                    type: 'ADD FUND TRANSFER ENTRY',
+                    customerName: e.customerName,
+                    customerNumber: e.customerNumber,
+                    beneficiaryName: e.beneficiaryName,
+                    beneficiaryNumber: e.beneficiaryNumber,
+                    applicationName: e.applicationName,
+                    transferredFrom: e.transferredFrom,
+                    transferredFromRemark: e.transferredFromRemark || '',
+                    amount: String(e.amount ?? ''),
+                    cashReceived: e.cashReceived,
+                    addedInGala: e.addedInGala,
+                    addedInGalaRemark: e.addedInGalaRemark || '',
+                    commissionType: e.commissionType,
+                    commissionAmount: String(e.commissionAmount ?? ''),
+                    commissionRemark: e.commissionRemark || ''
+                  };
+                } else if (e.type === 'AEPS') {
+                  return {
+                    type: 'AEPS',
+                    aepsIdType: e.aepsIdType || '',
+                    aepsIdName: e.aepsIdName || '',
+                    amount: String(e.amount ?? ''),
+                    givenToCustomer: e.givenToCustomer || '',
+                    givenToCustomerRemark: e.givenToCustomerRemark || '',
+                    givenToCustomerOther: e.givenToCustomerOther || '',
+                    withdrawnType: e.withdrawnType || '',
+                    commissionType: e.commissionType || '',
+                    commissionAmount: String(e.commissionAmount ?? ''),
+                    commissionRemark: e.commissionRemark || ''
+                  };
+                } else {
+                  return {
+                    type: e.type || 'Other',
+                    amount: String(e.amount ?? '')
+                  };
+                }
+              });
+              // Removed setting dashboardEntries to avoid duplicates; balances are recalculated from fetched entries
+              calculateBalancesFromEntries(entries);
             }
           } catch {}
 
@@ -634,7 +819,7 @@ function App() {
         const [clientsRes, tasksRes, fundRes, servicesRes] = await Promise.all([
           apiFetch('/api/data/clients', { headers }),
           apiFetch('/api/data/tasks', { headers }),
-          apiFetch('/api/data/fund-transfers', { headers }),
+          apiFetch('/api/data/sales-entries', { headers }),
           apiFetch('/api/data/services', { headers })
         ]);
         const clientsJson = await clientsRes.json().catch(() => ({} as any));
@@ -676,24 +861,47 @@ function App() {
         if (servicesJson?.success) setServices((servicesJson.data.services || []).map((s:any)=>({ id: s._id, name: s.name, amount: s.amount || 0 })));
         if (fundJson?.success) {
           const entries = (fundJson.data.entries || []) as any[];
-          const mappedEntries: DashboardEntry[] = entries.map((e: any) => ({
-            type: 'ADD FUND TRANSFER ENTRY',
-            customerName: e.customerName,
-            customerNumber: e.customerNumber,
-            beneficiaryName: e.beneficiaryName,
-            beneficiaryNumber: e.beneficiaryNumber,
-            applicationName: e.applicationName,
-            transferredFrom: e.transferredFrom,
-            transferredFromRemark: e.transferredFromRemark || '',
-            amount: String(e.amount ?? ''),
-            cashReceived: e.cashReceived,
-            addedInGala: e.addedInGala,
-            addedInGalaRemark: e.addedInGalaRemark || '',
-            commissionType: e.commissionType,
-            commissionAmount: String(e.commissionAmount ?? ''),
-            commissionRemark: e.commissionRemark || ''
-          }));
-          setDashboardEntries(mappedEntries);
+          const mappedEntries: DashboardEntry[] = entries.map((e: any) => {
+            if (e.type === 'Fund Transfer') {
+              return {
+                type: 'ADD FUND TRANSFER ENTRY',
+                customerName: e.customerName,
+                customerNumber: e.customerNumber,
+                beneficiaryName: e.beneficiaryName,
+                beneficiaryNumber: e.beneficiaryNumber,
+                applicationName: e.applicationName,
+                transferredFrom: e.transferredFrom,
+                transferredFromRemark: e.transferredFromRemark || '',
+                amount: String(e.amount ?? ''),
+                cashReceived: e.cashReceived,
+                addedInGala: e.addedInGala,
+                addedInGalaRemark: e.addedInGalaRemark || '',
+                commissionType: e.commissionType,
+                commissionAmount: String(e.commissionAmount ?? ''),
+                commissionRemark: e.commissionRemark || ''
+              };
+            } else if (e.type === 'AEPS') {
+              return {
+                type: 'AEPS',
+                aepsIdType: e.aepsIdType || '',
+                aepsIdName: e.aepsIdName || '',
+                amount: String(e.amount ?? ''),
+                givenToCustomer: e.givenToCustomer || '',
+                givenToCustomerRemark: e.givenToCustomerRemark || '',
+                givenToCustomerOther: e.givenToCustomerOther || '',
+                withdrawnType: e.withdrawnType || '',
+                commissionType: e.commissionType || '',
+                commissionAmount: String(e.commissionAmount ?? ''),
+                commissionRemark: e.commissionRemark || ''
+              };
+            } else {
+              return {
+                type: e.type || 'Other',
+                amount: String(e.amount ?? '')
+              };
+            }
+          });
+          // Avoid populating dashboardEntries from API to prevent duplicate rendering; balances are derived from entries
         }
       } catch {}
 
@@ -932,8 +1140,12 @@ function App() {
       case 'sales':
         return (
       <Sales
+        token={authToken || ''}
         onAepsBalanceUpdate={handleAepsBalanceUpdate}
         onFundTransferBalanceUpdate={handleFundTransferBalanceUpdate}
+        onMobileBalanceUpdate={handleMobileBalanceUpdate}
+        onBankCashAepsUpdate={handleBankCashAepsUpdate}
+        onBalanceRecalculation={calculateBalancesFromEntries}
         dashboardEntries={dashboardEntries}
         setDashboardEntries={setDashboardEntries}
       />
@@ -1355,7 +1567,6 @@ function App() {
         existingCustomers={clients.map(c => c.name)}
         onAddService={handleAddService}
         onAddEmployee={handleAddEmployee}
-        editingTask={editingTask}
       />
     </div>
   );
