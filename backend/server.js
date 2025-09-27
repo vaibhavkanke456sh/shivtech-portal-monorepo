@@ -34,6 +34,7 @@ app.use(cors({
     'http://localhost:3001',
     'http://localhost:5173',
     'https://shivtech-portal-frontend.vercel.app',
+    'https://shivtech-portal-frontend-kfu227h14-vaibhavkanke456shs-projects.vercel.app',
     process.env.CORS_ORIGIN
   ].filter(Boolean),
   credentials: true,
