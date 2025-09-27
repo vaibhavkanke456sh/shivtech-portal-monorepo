@@ -1554,6 +1554,7 @@ function App() {
               setActiveScreen('client');
               setShowAddClientModal(true);
             }}
+            onAddTask={() => setIsTaskModalOpen(true)}
             onLogout={handleLogout}
           />
           <main>

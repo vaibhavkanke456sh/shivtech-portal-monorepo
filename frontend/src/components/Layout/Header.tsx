@@ -1,13 +1,14 @@
 import React from 'react';
-import { Search, Plus, LogOut } from 'lucide-react';
+import { Search, Plus, LogOut, CheckSquare } from 'lucide-react';
 
 interface HeaderProps {
   title: string;
   onAddClient: () => void;
+  onAddTask: () => void;
   onLogout: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ title, onAddClient, onLogout }) => {
+const Header: React.FC<HeaderProps> = ({ title, onAddClient, onAddTask, onLogout }) => {
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 mb-6">
       <h1 className="text-3xl font-bold text-gray-800">{title}</h1>
@@ -28,6 +29,14 @@ const Header: React.FC<HeaderProps> = ({ title, onAddClient, onLogout }) => {
         >
           <Plus size={16} />
           Add new client
+        </button>
+        
+        <button
+          onClick={onAddTask}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors font-medium"
+        >
+          <CheckSquare size={16} />
+          Add New Task
         </button>
         
         <button
