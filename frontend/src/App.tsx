@@ -902,6 +902,7 @@ function App() {
             }
           });
           // Avoid populating dashboardEntries from API to prevent duplicate rendering; balances are derived from entries
+          calculateBalancesFromEntries(entries);
         }
       } catch {}
 
