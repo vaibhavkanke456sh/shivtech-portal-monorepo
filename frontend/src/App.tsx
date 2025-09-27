@@ -1037,8 +1037,14 @@ function App() {
   
   // Handle status card clicks to redirect to task list
   const handleStatusCardClick = (status: string) => {
-    setActiveScreen('tasks');
-    setTaskFilter(status);
+    // Map dashboard status values to TaskOverview filter keys
+    const statusMapping: Record<string, string> = {
+      'service-delivered': 'delivered'
+    };
+    
+    const mappedStatus = statusMapping[status] || status;
+    setActiveScreen('task-all');
+    setTaskFilter(mappedStatus);
   };
   const renderScreen = () => {
     switch (activeScreen) {
