@@ -1,5 +1,3 @@
 {
-  "buildCommand": false,
-  "installCommand": false,
-  "framework": false
+  "outputDirectory": "frontend/dist"
 }

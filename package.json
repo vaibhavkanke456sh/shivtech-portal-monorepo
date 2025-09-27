@@ -9,8 +9,8 @@
   ],
   "scripts": {
     "start": "node backend/server.js",
-    "build": "vite build",
-    "dev": "vite",
+    "build": "cd frontend && npm run build",
+    "dev": "cd frontend && npm run dev",
     "lint": "eslint .",
     "preview": "vite preview",
     "dev:frontend": "cd frontend && npm run dev",
