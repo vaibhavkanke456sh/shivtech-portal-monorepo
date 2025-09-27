@@ -1,9 +1,5 @@
 {
-  "framework": "vite",
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ]
+  "buildCommand": false,
+  "installCommand": false,
+  "framework": false
 }
