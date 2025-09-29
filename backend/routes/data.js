@@ -389,7 +389,7 @@ router.post('/sales-entries', async (req, res) => {
     if (actualType === 'AEPS') {
       processedData.amount = parseFloat(processedData.amount || '0');
       processedData.commissionAmount = parseFloat(processedData.commissionAmount || '0');
-    } else if (actualType === 'ADD FUND TRANSFER ENTRY') {
+    } else if (actualType === 'ADD FUND TRANSFER ENTRY' || actualType === 'ADD_FUND_TRANSFER_ENTRY') {
       processedData.amount = parseFloat(processedData.amount || '0');
       processedData.commissionAmount = parseFloat(processedData.commissionAmount || '0');
     } else if (actualType === 'MOBILE_BALANCE' || actualType === 'BANK_CASH_AEPS') {
@@ -401,6 +401,7 @@ router.post('/sales-entries', async (req, res) => {
     let entry;
     switch (actualType) {
       case 'ADD FUND TRANSFER ENTRY':
+      case 'ADD_FUND_TRANSFER_ENTRY':
         entry = await FundTransfer.create(payload);
         break;
       case 'AEPS':
@@ -442,6 +443,7 @@ router.put('/sales-entries/:type/:id', async (req, res) => {
     let entry;
     switch (type) {
       case 'ADD_FUND_TRANSFER_ENTRY':
+      case 'ADD FUND TRANSFER ENTRY':
         entry = await FundTransfer.findOneAndUpdate({ _id: id, owner: req.user._id }, updates, { new: true });
         break;
       case 'AEPS':
@@ -484,6 +486,7 @@ router.delete('/sales-entries/:type/:id', async (req, res) => {
     let result;
     switch (type) {
       case 'ADD_FUND_TRANSFER_ENTRY':
+      case 'ADD FUND TRANSFER ENTRY':
         result = await FundTransfer.findOneAndUpdate({ _id: id, owner: req.user._id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
         break;
       case 'AEPS':
