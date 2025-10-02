@@ -124,7 +124,8 @@ function App() {
 
   // Function to calculate balances from sales entries
   const calculateBalancesFromEntries = (entries: any[]) => {
-    console.log('calculateBalancesFromEntries called with', entries.length, 'entries');
+    console.log('🔄 calculateBalancesFromEntries called with', entries.length, 'entries');
+    console.log('📋 Entries details:', entries);
     
     const newMobileBalances = {
       paytm: 0,
@@ -152,6 +153,7 @@ function App() {
     };
 
     entries.forEach((entry: any) => {
+      console.log(`🔍 Processing entry:`, entry.type || entry.entryType, entry);
       const amount = parseFloat(entry.amount || '0');
       const isAdd = entry.operationType === 'add';
       const adjustedAmount = isAdd ? amount : -amount;
@@ -203,7 +205,8 @@ function App() {
             newBankBalances.shopqr += adjustedAmount;
             break;
         }
-      } else if (entry.type === 'ADD_FUND_TRANSFER_ENTRY' || entry.entryType === 'ADD_FUND_TRANSFER_ENTRY') {
+      } else if (entry.type === 'ADD_FUND_TRANSFER_ENTRY' || entry.entryType === 'ADD_FUND_TRANSFER_ENTRY' || entry.type === 'ADD FUND TRANSFER ENTRY' || entry.entryType === 'ADD FUND TRANSFER ENTRY') {
+        console.log('🎯 Processing fund transfer entry:', entry);
         console.log('Found fund transfer entry with transferredFrom:', entry.transferredFrom, 'amount:', entry.amount);
         // Handle fund transfer entries - deduct from the source account
         const transferredFrom = entry.transferredFrom || '';
@@ -242,6 +245,9 @@ function App() {
       }
     });
 
+    console.log('Final calculated bank balances:', newBankBalances);
+    console.log('Final calculated mobile balances:', newMobileBalances);
+    console.log('🏦 Setting bank balances from calculateBalancesFromEntries');
     setMobileBalances(newMobileBalances);
     setBankBalances(newBankBalances);
   };
@@ -425,6 +431,7 @@ function App() {
   // Handler to update AEPS/Bank balances from Sales
   // Enhanced AEPS balance update: also handle payout deduction for Vaibhav, Omkar, Uma
   const handleAepsBalanceUpdate = (aepsIdType: string, amount: number, payoutInfo?: { transferredFrom?: string; cashFromGala?: boolean; withdrawnFromId?: boolean; commissionType?: string; commissionAmount?: number }) => {
+    console.log('💰 handleAepsBalanceUpdate called with:', aepsIdType, amount, payoutInfo);
     setBankBalances(prev => {
       const updated = { ...prev };
       if (aepsIdType === 'Redmil') updated.redmil += amount;
@@ -705,8 +712,10 @@ function App() {
             if (servicesJson?.success) setServices((servicesJson.data.services || []).map((s:any)=>({ id: s._id, name: s.name, amount: s.amount || 0 })));
             if (fundJson?.success) {
               const entries = (fundJson.data.entries || []) as any[];
+              console.log('Fetched entries from backend:', entries);
+              console.log('Fund transfer entries:', entries.filter(e => e.type === 'ADD FUND TRANSFER ENTRY'));
               const mappedEntries: DashboardEntry[] = entries.map((e: any) => {
-                if (e.type === 'Fund Transfer') {
+                if (e.type === 'ADD FUND TRANSFER ENTRY') {
                   return {
                     type: 'ADD FUND TRANSFER ENTRY',
                     customerName: e.customerName,
@@ -746,6 +755,7 @@ function App() {
                 }
               });
               // Removed setting dashboardEntries to avoid duplicates; balances are recalculated from fetched entries
+              console.log('Calling calculateBalancesFromEntries with entries:', entries);
               calculateBalancesFromEntries(entries);
             }
           } catch {}
