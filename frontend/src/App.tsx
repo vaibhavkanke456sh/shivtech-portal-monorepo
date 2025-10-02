@@ -124,6 +124,8 @@ function App() {
 
   // Function to calculate balances from sales entries
   const calculateBalancesFromEntries = (entries: any[]) => {
+    console.log('calculateBalancesFromEntries called with', entries.length, 'entries');
+    
     const newMobileBalances = {
       paytm: 0,
       phonepe: 0,
@@ -201,11 +203,47 @@ function App() {
             newBankBalances.shopqr += adjustedAmount;
             break;
         }
+      } else if (entry.type === 'ADD_FUND_TRANSFER_ENTRY' || entry.entryType === 'ADD_FUND_TRANSFER_ENTRY') {
+        console.log('Found fund transfer entry with transferredFrom:', entry.transferredFrom, 'amount:', entry.amount);
+        // Handle fund transfer entries - deduct from the source account
+        const transferredFrom = entry.transferredFrom || '';
+        const commissionAmount = parseFloat(entry.commissionAmount || '0');
+        const commissionType = entry.commissionType || '';
+        
+        // Deduct transfer amount from source account
+        switch (transferredFrom) {
+          case 'Vaibhav':
+            newBankBalances.vaibhav -= amount;
+            break;
+          case 'Omkar':
+            newBankBalances.omkar -= amount;
+            break;
+          case 'Uma':
+            newBankBalances.uma -= amount;
+            break;
+          case 'Shop Accounts':
+            newBankBalances.bank -= amount;
+            break;
+        }
+        
+        // Add commission to appropriate account
+        if (commissionAmount > 0) {
+          if (commissionType.toLowerCase() === 'cash') {
+            newBankBalances.cash += commissionAmount;
+          } else if (commissionType.toLowerCase() === 'online') {
+            newBankBalances.shopqr += commissionAmount;
+          }
+        }
+        
+        // If cash was received and added to Gala, add to cash
+        if (entry.cashReceived === 'Yes' && entry.addedInGala === 'Yes') {
+          newBankBalances.cash += amount;
+        }
       }
     });
 
     setMobileBalances(newMobileBalances);
-    setBankBalances(prev => ({ ...prev, ...newBankBalances }));
+    setBankBalances(newBankBalances);
   };
 
   // Persisted dashboard entries for Sales
@@ -605,6 +643,7 @@ function App() {
 
   // Session restore on mount and load server-side data
   useEffect(() => {
+    console.log('useEffect running - loading initial data');
     const token = localStorage.getItem('dsam_token');
     if (!token) return;
     (async () => {
@@ -816,15 +855,13 @@ function App() {
     (async () => {
       try {
         const headers: any = { Authorization: `Bearer ${authToken}` };
-        const [clientsRes, tasksRes, fundRes, servicesRes] = await Promise.all([
+        const [clientsRes, tasksRes, servicesRes] = await Promise.all([
           apiFetch('/api/data/clients', { headers }),
           apiFetch('/api/data/tasks', { headers }),
-          apiFetch('/api/data/sales-entries', { headers }),
           apiFetch('/api/data/services', { headers })
         ]);
         const clientsJson = await clientsRes.json().catch(() => ({} as any));
         const tasksJson = await tasksRes.json().catch(() => ({} as any));
-        const fundJson = await fundRes.json().catch(() => ({} as any));
         const servicesJson = await servicesRes.json().catch(() => ({} as any));
         const mapClient = (c: any): Client => ({ id: c._id, name: c.name, phone: c.phone || '', createdAt: new Date(c.createdAt).toISOString().split('T')[0] });
         const mapTask = (t: any): Task => ({
@@ -859,51 +896,6 @@ function App() {
           setTasks(loadedTasks);
         }
         if (servicesJson?.success) setServices((servicesJson.data.services || []).map((s:any)=>({ id: s._id, name: s.name, amount: s.amount || 0 })));
-        if (fundJson?.success) {
-          const entries = (fundJson.data.entries || []) as any[];
-          const mappedEntries: DashboardEntry[] = entries.map((e: any) => {
-            if (e.type === 'Fund Transfer') {
-              return {
-                type: 'ADD FUND TRANSFER ENTRY',
-                customerName: e.customerName,
-                customerNumber: e.customerNumber,
-                beneficiaryName: e.beneficiaryName,
-                beneficiaryNumber: e.beneficiaryNumber,
-                applicationName: e.applicationName,
-                transferredFrom: e.transferredFrom,
-                transferredFromRemark: e.transferredFromRemark || '',
-                amount: String(e.amount ?? ''),
-                cashReceived: e.cashReceived,
-                addedInGala: e.addedInGala,
-                addedInGalaRemark: e.addedInGalaRemark || '',
-                commissionType: e.commissionType,
-                commissionAmount: String(e.commissionAmount ?? ''),
-                commissionRemark: e.commissionRemark || ''
-              };
-            } else if (e.type === 'AEPS') {
-              return {
-                type: 'AEPS',
-                aepsIdType: e.aepsIdType || '',
-                aepsIdName: e.aepsIdName || '',
-                amount: String(e.amount ?? ''),
-                givenToCustomer: e.givenToCustomer || '',
-                givenToCustomerRemark: e.givenToCustomerRemark || '',
-                givenToCustomerOther: e.givenToCustomerOther || '',
-                withdrawnType: e.withdrawnType || '',
-                commissionType: e.commissionType || '',
-                commissionAmount: String(e.commissionAmount ?? ''),
-                commissionRemark: e.commissionRemark || ''
-              };
-            } else {
-              return {
-                type: e.type || 'Other',
-                amount: String(e.amount ?? '')
-              };
-            }
-          });
-          // Avoid populating dashboardEntries from API to prevent duplicate rendering; balances are derived from entries
-          calculateBalancesFromEntries(entries);
-        }
       } catch {}
 
       // Start realtime subscription via SSE for interactive login path too

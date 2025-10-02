@@ -1725,9 +1725,17 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                               )}
                               {entry.type === 'ADD FUND TRANSFER ENTRY' && (
                                 <div>
-                                  <div><strong>Customer:</strong> {entry.customerName}</div>
-                                  <div><strong>Beneficiary:</strong> {entry.beneficiaryName}</div>
-                                  <div><strong>Application:</strong> {entry.applicationName}</div>
+                                  <div><strong>Customer Name:</strong> {entry.customerName || 'N/A'}</div>
+                                  <div><strong>Customer Number:</strong> {entry.customerNumber || 'N/A'}</div>
+                                  <div><strong>Beneficiary Name:</strong> {entry.beneficiaryName || 'N/A'}</div>
+                                  <div><strong>Beneficiary Number:</strong> {entry.beneficiaryNumber || 'N/A'}</div>
+                                  <div><strong>Application Name:</strong> {entry.applicationName || 'N/A'}</div>
+                                  <div><strong>Transferred From:</strong> {entry.transferredFrom || 'N/A'}</div>
+                                  <div><strong>Amount:</strong> ₹{entry.amount || '0'}</div>
+                                  <div><strong>Cash Received:</strong> {entry.cashReceived || 'N/A'}</div>
+                                  <div><strong>Added in Gala:</strong> {entry.addedInGala || 'N/A'}</div>
+                                  <div><strong>Commission Type:</strong> {entry.commissionType || 'N/A'}</div>
+                                  <div><strong>Commission Amount:</strong> ₹{entry.commissionAmount || '0'}</div>
                                   {entry.transferredFromRemark && <div><strong>Transfer Remark:</strong> {entry.transferredFromRemark}</div>}
                                   {entry.addedInGalaRemark && <div><strong>Gala Remark:</strong> {entry.addedInGalaRemark}</div>}
                                   {entry.commissionRemark && <div><strong>Commission Remark:</strong> {entry.commissionRemark}</div>}

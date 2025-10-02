@@ -291,10 +291,20 @@ router.get('/sales-entries', async (req, res) => {
         entries.push({
           _id: entry._id,
           type: 'ADD FUND TRANSFER ENTRY',
-          senderName: entry.senderName,
-          receiverName: entry.receiverName,
+          customerName: entry.customerName,
+          customerNumber: entry.customerNumber,
+          beneficiaryName: entry.beneficiaryName,
+          beneficiaryNumber: entry.beneficiaryNumber,
+          applicationName: entry.applicationName,
+          transferredFrom: entry.transferredFrom,
+          transferredFromRemark: entry.transferredFromRemark,
           amount: entry.amount,
-          transferType: entry.transferType,
+          cashReceived: entry.cashReceived,
+          addedInGala: entry.addedInGala,
+          addedInGalaRemark: entry.addedInGalaRemark,
+          commissionType: entry.commissionType,
+          commissionAmount: entry.commissionAmount,
+          commissionRemark: entry.commissionRemark,
           timestamp: entry.createdAt,
           createdAt: entry.createdAt
         });
