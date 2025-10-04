@@ -242,6 +242,124 @@ function App() {
         if (entry.cashReceived === 'Yes' && entry.addedInGala === 'Yes') {
           newBankBalances.cash += amount;
         }
+      } else if (entry.type === 'ONLINE_RECEIVED_CASH_GIVEN' || entry.entryType === 'ONLINE_RECEIVED_CASH_GIVEN') {
+        console.log('🎯 Processing Online Received Cash Given entry:', entry);
+        const receivedOnlineAmount = parseFloat(entry.receivedOnlineAmount || '0');
+        const cashGiven = parseFloat(entry.cashGiven || '0');
+        const receivedOnlineFrom = entry.receivedOnlineFrom || entry.accountHolder || '';
+        const moneyDistributionType = entry.moneyDistributionType || '';
+        
+        // Handle received online amount (add to appropriate account)
+        if (receivedOnlineAmount > 0) {
+          switch (receivedOnlineFrom) {
+            case 'Vaibhav':
+              newBankBalances.vaibhav += receivedOnlineAmount;
+              break;
+            case 'Omkar':
+              newBankBalances.omkar += receivedOnlineAmount;
+              break;
+            case 'Uma':
+              newBankBalances.uma += receivedOnlineAmount;
+              break;
+            case 'Shop':
+              newBankBalances.shopqr += receivedOnlineAmount;
+              break;
+          }
+        }
+        
+        // Handle cash given (subtract from appropriate account)
+        if (cashGiven > 0) {
+          if (moneyDistributionType === 'Full Amount given by One Person') {
+            const howMoneyGivenSingle = entry.howMoneyGivenSingle || '';
+            const howMoneyGivenSinglePersonName = entry.howMoneyGivenSinglePersonName || '';
+            
+            switch (howMoneyGivenSingle) {
+              case 'Cash from Gala':
+                newBankBalances.cash -= cashGiven;
+                break;
+              case 'Vaibhav':
+                newBankBalances.vaibhav -= cashGiven;
+                break;
+              case 'Omkar':
+                newBankBalances.omkar -= cashGiven;
+                break;
+              case 'Uma':
+                newBankBalances.uma -= cashGiven;
+                break;
+              case 'Cash Given to Customer by Person':
+                if (howMoneyGivenSinglePersonName === 'Vaibhav') {
+                  newBankBalances.vaibhav -= cashGiven;
+                } else if (howMoneyGivenSinglePersonName === 'Omkar') {
+                  newBankBalances.omkar -= cashGiven;
+                } else if (howMoneyGivenSinglePersonName === 'Uma') {
+                  newBankBalances.uma -= cashGiven;
+                }
+                break;
+            }
+          } else if (moneyDistributionType === 'Full Amount given by Two Persons') {
+            // Handle first part
+            const firstPartAmount = parseFloat(entry.firstPartAmount || '0');
+            const firstPartMoneyGiven = entry.firstPartMoneyGiven || '';
+            const firstPartMoneyGivenPersonName = entry.firstPartMoneyGivenPersonName || '';
+            
+            if (firstPartAmount > 0) {
+              switch (firstPartMoneyGiven) {
+                case 'Cash from Gala':
+                  newBankBalances.cash -= firstPartAmount;
+                  break;
+                case 'Vaibhav':
+                  newBankBalances.vaibhav -= firstPartAmount;
+                  break;
+                case 'Omkar':
+                  newBankBalances.omkar -= firstPartAmount;
+                  break;
+                case 'Uma':
+                  newBankBalances.uma -= firstPartAmount;
+                  break;
+                case 'Cash Given to Customer by Person':
+                  if (firstPartMoneyGivenPersonName === 'Vaibhav') {
+                    newBankBalances.vaibhav -= firstPartAmount;
+                  } else if (firstPartMoneyGivenPersonName === 'Omkar') {
+                    newBankBalances.omkar -= firstPartAmount;
+                  } else if (firstPartMoneyGivenPersonName === 'Uma') {
+                    newBankBalances.uma -= firstPartAmount;
+                  }
+                  break;
+              }
+            }
+            
+            // Handle remaining part
+            const remainingPartAmount = parseFloat(entry.remainingPartAmount || '0');
+            const remainingPartMoneyGiven = entry.remainingPartMoneyGiven || '';
+            const remainingPartMoneyGivenPersonName = entry.remainingPartMoneyGivenPersonName || '';
+            
+            if (remainingPartAmount > 0) {
+              switch (remainingPartMoneyGiven) {
+                case 'Cash from Gala':
+                  newBankBalances.cash -= remainingPartAmount;
+                  break;
+                case 'Vaibhav':
+                  newBankBalances.vaibhav -= remainingPartAmount;
+                  break;
+                case 'Omkar':
+                  newBankBalances.omkar -= remainingPartAmount;
+                  break;
+                case 'Uma':
+                  newBankBalances.uma -= remainingPartAmount;
+                  break;
+                case 'Cash Given to Customer by Person':
+                  if (remainingPartMoneyGivenPersonName === 'Vaibhav') {
+                    newBankBalances.vaibhav -= remainingPartAmount;
+                  } else if (remainingPartMoneyGivenPersonName === 'Omkar') {
+                    newBankBalances.omkar -= remainingPartAmount;
+                  } else if (remainingPartMoneyGivenPersonName === 'Uma') {
+                    newBankBalances.uma -= remainingPartAmount;
+                  }
+                  break;
+              }
+            }
+          }
+        }
       }
     });
 
@@ -746,6 +864,35 @@ function App() {
                     commissionType: e.commissionType || '',
                     commissionAmount: String(e.commissionAmount ?? ''),
                     commissionRemark: e.commissionRemark || ''
+                  };
+                } else if (e.type === 'ONLINE_RECEIVED_CASH_GIVEN') {
+                  return {
+                    type: 'ONLINE_RECEIVED_CASH_GIVEN',
+                    senderName: e.senderName || '',
+                    senderNumber: e.senderNumber || '',
+                    receivedOnApplication: e.receivedOnApplication || '',
+                    accountHolder: e.accountHolder || '',
+                    accountHolderRemark: e.accountHolderRemark || '',
+                    receivedOnlineAmount: String(e.receivedOnlineAmount ?? '0'),
+                    cashGiven: String(e.cashGiven ?? '0'),
+                    moneyDistributionType: e.moneyDistributionType || '',
+                    howMoneyGivenSingle: e.howMoneyGivenSingle || '',
+                    howMoneyGivenSingleRemark: e.howMoneyGivenSingleRemark || '',
+                    howMoneyGivenSinglePersonName: e.howMoneyGivenSinglePersonName || '',
+                    firstPartMoneyGiven: e.firstPartMoneyGiven || '',
+                    firstPartMoneyGivenRemark: e.firstPartMoneyGivenRemark || '',
+                    firstPartMoneyGivenPersonName: e.firstPartMoneyGivenPersonName || '',
+                    firstPartAmount: String(e.firstPartAmount ?? ''),
+                    remainingPartMoneyGiven: e.remainingPartMoneyGiven || '',
+                    remainingPartMoneyGivenRemark: e.remainingPartMoneyGivenRemark || '',
+                    remainingPartMoneyGivenPersonName: e.remainingPartMoneyGivenPersonName || '',
+                    remainingPartAmount: String(e.remainingPartAmount ?? ''),
+                    commissionType: e.commissionType || '',
+                    commissionAmount: String(e.commissionAmount ?? ''),
+                    commissionRemark: e.commissionRemark || '',
+                    remarks: e.remarks || '',
+                    // Add the receivedOnlineFrom field for balance calculation
+                    receivedOnlineFrom: e.receivedOnlineFrom || e.accountHolder || ''
                   };
                 } else {
                   return {

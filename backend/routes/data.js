@@ -9,6 +9,7 @@ import AepsEntry from '../models/AepsEntry.js';
 import MobileBalance from '../models/MobileBalance.js';
 import BankCashAeps from '../models/BankCashAeps.js';
 import SalesEntry from '../models/SalesEntry.js';
+import OnlineReceivedCashGiven from '../models/OnlineReceivedCashGiven.js';
 import User from '../models/User.js';
 
 const router = express.Router();
@@ -274,11 +275,12 @@ router.get('/sales-entries', async (req, res) => {
     }
     
     // Fetch all entry types
-    const [fundTransfers, aepsEntries, mobileBalances, bankCashAeps, salesEntries] = await Promise.all([
+    const [fundTransfers, aepsEntries, mobileBalances, bankCashAeps, onlineReceivedCashGiven, salesEntries] = await Promise.all([
       FundTransfer.find(baseFilter).sort({ createdAt: -1 }),
       AepsEntry.find(baseFilter).sort({ createdAt: -1 }),
       MobileBalance.find(baseFilter).sort({ createdAt: -1 }),
       BankCashAeps.find(baseFilter).sort({ createdAt: -1 }),
+      OnlineReceivedCashGiven.find(baseFilter).sort({ createdAt: -1 }),
       SalesEntry.find(baseFilter).sort({ createdAt: -1 })
     ]);
     
@@ -358,6 +360,44 @@ router.get('/sales-entries', async (req, res) => {
       }
     });
 
+    // Online Received Cash Given entries
+    onlineReceivedCashGiven.forEach(entry => {
+      if (!serviceType || serviceType === 'ONLINE_RECEIVED_CASH_GIVEN') {
+        entries.push({
+          _id: entry._id,
+          type: 'ONLINE_RECEIVED_CASH_GIVEN',
+          // Basic transaction details
+          receivedOnlineAmount: entry.receivedOnlineAmount,
+          cashGiven: entry.cashGiven,
+          receivedOnlineFrom: entry.receivedOnlineFrom,
+          accountHolder: entry.accountHolder || entry.receivedOnlineFrom, // Fallback for compatibility
+          // Money distribution logic
+          moneyDistributionType: entry.moneyDistributionType,
+          // Single person scenario fields
+          howMoneyGivenSingle: entry.howMoneyGivenSingle,
+          howMoneyGivenSinglePersonName: entry.howMoneyGivenSinglePersonName,
+          // Two persons scenario fields
+          firstPartMoneyGiven: entry.firstPartMoneyGiven,
+          firstPartMoneyGivenPersonName: entry.firstPartMoneyGivenPersonName,
+          firstPartAmount: entry.firstPartAmount,
+          remainingPartMoneyGiven: entry.remainingPartMoneyGiven,
+          remainingPartMoneyGivenPersonName: entry.remainingPartMoneyGivenPersonName,
+          remainingPartAmount: entry.remainingPartAmount,
+          // Additional fields
+          senderName: entry.senderName,
+          senderNumber: entry.senderNumber,
+          receivedOnApplication: entry.receivedOnApplication,
+          accountHolderRemark: entry.accountHolderRemark,
+          commissionType: entry.commissionType,
+          commissionAmount: entry.commissionAmount,
+          commissionRemark: entry.commissionRemark,
+          remarks: entry.remarks,
+          timestamp: entry.createdAt,
+          createdAt: entry.createdAt
+        });
+      }
+    });
+
     // Sales entries (Recharge, Bill Payment, SIM Sold, etc.)
     salesEntries.forEach(entry => {
       if (!serviceType || serviceType === entry.entryType) {
@@ -387,11 +427,15 @@ router.get('/sales-entries', async (req, res) => {
 // Create unified sales entry
 router.post('/sales-entries', async (req, res) => {
   try {
+    console.log('POST /sales-entries - Request body:', JSON.stringify(req.body, null, 2));
+    
     const { entryType, type, data, ...entryData } = req.body;
     // Handle both 'entryType' and 'type' for backward compatibility
     const actualType = entryType || type;
     // Use 'data' field if provided, otherwise use the rest of the body
     const actualData = data || entryData;
+    
+    console.log('Processed data:', { actualType, actualData });
     
     // Convert string numbers to actual numbers based on entry type
     let processedData = { ...actualData };
@@ -404,6 +448,11 @@ router.post('/sales-entries', async (req, res) => {
       processedData.commissionAmount = parseFloat(processedData.commissionAmount || '0');
     } else if (actualType === 'MOBILE_BALANCE' || actualType === 'BANK_CASH_AEPS') {
       processedData.amount = parseFloat(processedData.amount || '0');
+    } else if (actualType === 'ONLINE_RECEIVED_CASH_GIVEN') {
+      processedData.receivedOnlineAmount = parseFloat(processedData.receivedOnlineAmount || '0');
+      processedData.cashGiven = parseFloat(processedData.cashGiven || '0');
+      processedData.firstPartAmount = parseFloat(processedData.firstPartAmount || '0');
+      processedData.remainingPartAmount = parseFloat(processedData.remainingPartAmount || '0');
     }
     
     const payload = { ...processedData, owner: req.user._id };
@@ -422,6 +471,11 @@ router.post('/sales-entries', async (req, res) => {
         break;
       case 'BANK_CASH_AEPS':
         entry = await BankCashAeps.create(payload);
+        break;
+      case 'ONLINE_RECEIVED_CASH_GIVEN':
+        console.log('Creating OnlineReceivedCashGiven with payload:', JSON.stringify(payload, null, 2));
+        entry = await OnlineReceivedCashGiven.create(payload);
+        console.log('Successfully created OnlineReceivedCashGiven entry:', entry._id);
         break;
       case 'RECHARGE_ENTRY':
       case 'BILL_PAYMENT_ENTRY':
@@ -465,6 +519,9 @@ router.put('/sales-entries/:type/:id', async (req, res) => {
       case 'BANK_CASH_AEPS':
         entry = await BankCashAeps.findOneAndUpdate({ _id: id, owner: req.user._id }, updates, { new: true });
         break;
+      case 'ONLINE_RECEIVED_CASH_GIVEN':
+        entry = await OnlineReceivedCashGiven.findOneAndUpdate({ _id: id, owner: req.user._id }, updates, { new: true });
+        break;
       case 'RECHARGE_ENTRY':
       case 'BILL_PAYMENT_ENTRY':
       case 'SIM_SOLD':
@@ -482,8 +539,10 @@ router.put('/sales-entries/:type/:id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Entry not found' });
     }
     
-    res.json({ success: true, data: { entry } });
+    res.status(201).json({ success: true, data: { entry } });
   } catch (error) {
+    console.error('Error in POST /sales-entries:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -507,6 +566,9 @@ router.delete('/sales-entries/:type/:id', async (req, res) => {
         break;
       case 'BANK_CASH_AEPS':
         result = await BankCashAeps.findOneAndUpdate({ _id: id, owner: req.user._id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
+        break;
+      case 'ONLINE_RECEIVED_CASH_GIVEN':
+        result = await OnlineReceivedCashGiven.findOneAndUpdate({ _id: id, owner: req.user._id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
         break;
       case 'RECHARGE_ENTRY':
       case 'BILL_PAYMENT_ENTRY':

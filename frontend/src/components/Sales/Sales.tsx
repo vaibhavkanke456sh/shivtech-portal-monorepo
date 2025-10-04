@@ -7,7 +7,7 @@ const serviceCategories = {
     { id: "SHOW ENTRIES", name: "Show Entries", icon: "📋", color: "bg-indigo-500" },
     { id: "ADD AEPS TRANSACTION", name: "Add AEPS Transaction", icon: "💳", color: "bg-blue-500" },
     { id: "ADD FUND TRANSFER ENTRY", name: "Add Fund Transfer Entry", icon: "💸", color: "bg-blue-500" },
-    { id: "ONLIEN RECIVED CAHS GIVEN.", name: "Online Received / Cash Given", icon: "💰", color: "bg-blue-500" },
+    { id: "ONLINE RECEIVED CASH GIVEN.", name: "Online Received / Cash Given", icon: "💰", color: "bg-blue-500" },
     { id: "RECHAREG ENTRY", name: "Recharge Entry", icon: "📱", color: "bg-blue-500" },
     { id: "BILL PAYMENT ENTRY", name: "Bill Payment Entry", icon: "🧾", color: "bg-blue-500" }
   ],
@@ -27,7 +27,7 @@ const salesTabs = [
   "SHOW ENTRIES",
   "ADD AEPS TRANSACTION",
   "ADD FUND TRANSFER ENTRY",
-  "ONLIEN RECIVED CAHS GIVEN.",
+  "ONLINE RECEIVED CASH GIVEN.",
   "RECHAREG ENTRY",
   "BILL PAYMENT ENTRY",
   "SIM SOLD",
@@ -68,6 +68,33 @@ interface FundTransferForm {
   commissionRemark: string;
 }
 
+interface OnlineReceivedCashGivenForm {
+  senderName: string;
+  senderNumber: string;
+  receivedOnApplication: string;
+  accountHolder: string;
+  accountHolderRemark: string;
+  receivedOnlineAmount: string;
+  cashGiven: string;
+  moneyDistributionType: string;
+  howMoneyGivenSingle: string;
+  howMoneyGivenSingleRemark: string;
+  howMoneyGivenSinglePersonName: string;
+  firstPartMoneyGiven: string;
+  firstPartMoneyGivenRemark: string;
+  firstPartMoneyGivenPersonName: string;
+  firstPartAmount: string;
+  remainingPartMoneyGiven: string;
+  remainingPartMoneyGivenRemark: string;
+  remainingPartMoneyGivenPersonName: string;
+  remainingPartAmount: string;
+  commissionType: string;
+  commissionAmount: string;
+  commissionRemark: string;
+  remarks: string;
+  receivedOnlineFrom?: string; // Optional field for balance calculations
+}
+
 const defaultMobileBalanceForm: MobileBalanceForm = {
   companyName: '',
   operationType: '',
@@ -83,20 +110,46 @@ const defaultBankCashAepsForm: BankCashAepsForm = {
 };
 
 const defaultFundTransferForm: FundTransferForm = {
-  customerName: '',
-  customerNumber: '',
+  customerName: 'UNKNOWN',
+  customerNumber: '00',
   beneficiaryName: '',
   beneficiaryNumber: '',
-  applicationName: '',
-  transferredFrom: '',
+  applicationName: 'PhonePe',
+  transferredFrom: 'Shop Accounts',
   transferredFromRemark: '',
   amount: '',
-  cashReceived: '',
-  addedInGala: '',
+  cashReceived: 'Yes',
+  addedInGala: 'Yes',
   addedInGalaRemark: '',
-  commissionType: '',
+  commissionType: 'No Commission',
   commissionAmount: '',
   commissionRemark: '',
+};
+
+const defaultOnlineReceivedCashGivenForm: OnlineReceivedCashGivenForm = {
+  senderName: '',
+  senderNumber: '',
+  receivedOnApplication: 'Shop QR',
+  accountHolder: 'Shop',
+  accountHolderRemark: '',
+  receivedOnlineAmount: '0',
+  cashGiven: '0',
+  moneyDistributionType: 'Full Amount given by One Person',
+  howMoneyGivenSingle: 'Cash from Gala',
+  howMoneyGivenSingleRemark: '',
+  howMoneyGivenSinglePersonName: '',
+  firstPartMoneyGiven: 'Cash from Gala',
+  firstPartMoneyGivenRemark: '',
+  firstPartMoneyGivenPersonName: '',
+  firstPartAmount: '',
+  remainingPartMoneyGiven: 'Cash from Gala',
+  remainingPartMoneyGivenRemark: '',
+  remainingPartMoneyGivenPersonName: '',
+  remainingPartAmount: '',
+  commissionType: 'No Commission',
+  commissionAmount: '',
+  commissionRemark: '',
+  remarks: '',
 };
 
 interface AEPSForm {
@@ -137,6 +190,7 @@ type DashboardEntry =
   | ({ type: 'ADD FUND TRANSFER ENTRY'; date?: string } & FundTransferForm)
   | ({ type: 'MOBILE_BALANCE'; date?: string } & MobileBalanceForm)
   | ({ type: 'BANK_CASH_AEPS'; date?: string } & BankCashAepsForm)
+  | ({ type: 'ONLINE_RECEIVED_CASH_GIVEN'; date?: string } & OnlineReceivedCashGivenForm)
   | { type: string; amount: string; date?: string };
 
 export type { DashboardEntry };
@@ -171,6 +225,24 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
   const [amounts, setAmounts] = useState(Array(salesTabs.length).fill(""));
   const [aepsForm, setAepsForm] = useState<AEPSForm>(defaultAEPSForm);
   const [fundTransferForm, setFundTransferForm] = useState<FundTransferForm>(defaultFundTransferForm);
+  const [onlineReceivedCashGivenForm, setOnlineReceivedCashGivenForm] = useState<OnlineReceivedCashGivenForm>(defaultOnlineReceivedCashGivenForm);
+  
+  // Debug: Log activeTab changes
+  console.log('=== Current activeTab:', activeTab);
+  
+  // Debug: Log when component mounts
+  useEffect(() => {
+    console.log('🚀 Sales component has mounted!');
+    console.log('📊 Initial activeTab:', activeTab);
+  }, []);
+
+  // Debug: Log when OnlineReceivedCashGiven form is displayed
+  useEffect(() => {
+    if (activeTab === 4) {
+      console.log('🎯 OnlineReceivedCashGiven form is now being displayed!');
+      console.log('📝 Form data:', onlineReceivedCashGivenForm);
+    }
+  }, [activeTab, onlineReceivedCashGivenForm]);
   const [mobileBalanceForm, setMobileBalanceForm] = useState<MobileBalanceForm>(defaultMobileBalanceForm);
   const [bankCashAepsForm, setBankCashAepsForm] = useState<BankCashAepsForm>(defaultBankCashAepsForm);
   const [showModal, setShowModal] = useState(false);
@@ -426,6 +498,11 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
     setFundTransferForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleOnlineReceivedCashGivenChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setOnlineReceivedCashGivenForm((prev) => ({ ...prev, [name]: value }));
+  };
+
   const handleMobileBalanceChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setMobileBalanceForm((prev) => ({ ...prev, [name]: value }));
@@ -598,6 +675,207 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
     setFundTransferForm(defaultFundTransferForm);
   };
 
+  const handleOnlineReceivedCashGivenSubmit = async (e: React.FormEvent) => {
+    console.log('=== FORM SUBMIT FUNCTION CALLED ===');
+    e.preventDefault();
+    console.log('Form submission started at:', new Date().toISOString());
+    console.log('Form data:', onlineReceivedCashGivenForm);
+    console.log('Money distribution type:', onlineReceivedCashGivenForm.moneyDistributionType);
+    console.log('Remaining part person name:', onlineReceivedCashGivenForm.remainingPartMoneyGivenPersonName);
+    console.log('Token available:', !!token);
+    console.log('Token value:', token);
+    
+    try {
+      setLoading(true);
+      
+      const entryData = {
+        type: 'ONLINE_RECEIVED_CASH_GIVEN',
+        ...onlineReceivedCashGivenForm,
+        timestamp: new Date().toISOString(),
+      };
+
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      
+      // Map frontend fields to backend model fields
+      const backendData = {
+        senderName: onlineReceivedCashGivenForm.senderName,
+        senderNumber: onlineReceivedCashGivenForm.senderNumber,
+        receivedOnApplication: onlineReceivedCashGivenForm.receivedOnApplication,
+        accountHolder: onlineReceivedCashGivenForm.accountHolder,
+        accountHolderRemark: onlineReceivedCashGivenForm.accountHolderRemark,
+        receivedOnlineAmount: parseFloat(onlineReceivedCashGivenForm.receivedOnlineAmount) || 0,
+        cashGiven: parseFloat(onlineReceivedCashGivenForm.cashGiven) || 0,
+        receivedOnlineFrom: onlineReceivedCashGivenForm.accountHolder,
+        moneyDistributionType: onlineReceivedCashGivenForm.moneyDistributionType,
+        commissionType: onlineReceivedCashGivenForm.commissionType,
+        commissionAmount: parseFloat(onlineReceivedCashGivenForm.commissionAmount) || 0,
+        commissionRemark: onlineReceivedCashGivenForm.commissionRemark,
+        remarks: onlineReceivedCashGivenForm.remarks
+      };
+
+      // Always include relevant fields based on moneyDistributionType
+      if (onlineReceivedCashGivenForm.moneyDistributionType === 'Full Amount given by One Person') {
+        // Single person scenario - always include these fields
+        backendData.howMoneyGivenSingle = onlineReceivedCashGivenForm.howMoneyGivenSingle;
+        if (onlineReceivedCashGivenForm.howMoneyGivenSinglePersonName && onlineReceivedCashGivenForm.howMoneyGivenSinglePersonName.trim() !== '') {
+          backendData.howMoneyGivenSinglePersonName = onlineReceivedCashGivenForm.howMoneyGivenSinglePersonName;
+        }
+      } else if (onlineReceivedCashGivenForm.moneyDistributionType === 'Full Amount given by Two Persons') {
+        // Two persons scenario - always include required fields
+        backendData.firstPartMoneyGiven = onlineReceivedCashGivenForm.firstPartMoneyGiven;
+        backendData.remainingPartMoneyGiven = onlineReceivedCashGivenForm.remainingPartMoneyGiven;
+        
+        if (onlineReceivedCashGivenForm.firstPartMoneyGivenPersonName && onlineReceivedCashGivenForm.firstPartMoneyGivenPersonName.trim() !== '') {
+          backendData.firstPartMoneyGivenPersonName = onlineReceivedCashGivenForm.firstPartMoneyGivenPersonName;
+        }
+        if (onlineReceivedCashGivenForm.firstPartAmount && onlineReceivedCashGivenForm.firstPartAmount.trim() !== '') {
+          backendData.firstPartAmount = parseFloat(onlineReceivedCashGivenForm.firstPartAmount);
+        }
+        if (onlineReceivedCashGivenForm.remainingPartMoneyGivenPersonName && onlineReceivedCashGivenForm.remainingPartMoneyGivenPersonName.trim() !== '') {
+          backendData.remainingPartMoneyGivenPersonName = onlineReceivedCashGivenForm.remainingPartMoneyGivenPersonName;
+        }
+        if (onlineReceivedCashGivenForm.remainingPartAmount && onlineReceivedCashGivenForm.remainingPartAmount.trim() !== '') {
+          backendData.remainingPartAmount = parseFloat(onlineReceivedCashGivenForm.remainingPartAmount);
+        }
+      }
+      
+      console.log('Sending backend data:', backendData);
+      console.log('Making API call to /api/data/sales-entries');
+      
+      const response = await apiFetch('/api/data/sales-entries', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          entryType: 'ONLINE_RECEIVED_CASH_GIVEN',
+          data: backendData
+        }),
+      });
+
+      console.log('API response status:', response.status);
+      console.log('API response ok:', response.ok);
+
+      if (response.ok) {
+        // Update balances in real-time
+        const cashGivenAmount = parseFloat(onlineReceivedCashGivenForm.cashGiven) || 0;
+        const receivedOnlineAmount = parseFloat(onlineReceivedCashGivenForm.receivedOnlineAmount) || 0;
+        
+        // Handle Cash Given subtraction logic
+        if (cashGivenAmount > 0) {
+          if (onlineReceivedCashGivenForm.moneyDistributionType === 'Full Amount given by One Person') {
+            const moneyGivenBy = onlineReceivedCashGivenForm.howMoneyGivenSingle;
+            
+            switch (moneyGivenBy) {
+              case 'Cash from Gala':
+                onBankCashAepsUpdate?.('cash', 'remove', cashGivenAmount);
+                break;
+              case 'Vaibhav':
+                onBankCashAepsUpdate?.('collect from vaibhav', 'remove', cashGivenAmount);
+                break;
+              case 'Omkar':
+                onBankCashAepsUpdate?.('collect from omkar', 'remove', cashGivenAmount);
+                break;
+              case 'Uma':
+                onBankCashAepsUpdate?.('collect from uma', 'remove', cashGivenAmount);
+                break;
+              case 'Cash Given to Customer by Person':
+                // Check person name to determine which account to subtract from
+                const personName = onlineReceivedCashGivenForm.howMoneyGivenSinglePersonName;
+                if (personName === 'Vaibhav') {
+                  onBankCashAepsUpdate?.('collect from vaibhav', 'remove', cashGivenAmount);
+                } else if (personName === 'Omkar') {
+                  onBankCashAepsUpdate?.('collect from omkar', 'remove', cashGivenAmount);
+                } else if (personName === 'Uma') {
+                  onBankCashAepsUpdate?.('collect from uma', 'remove', cashGivenAmount);
+                }
+                break;
+            }
+          } else if (onlineReceivedCashGivenForm.moneyDistributionType === 'Full Amount given by Two Persons') {
+            // Handle two persons scenario
+            const firstPartAmount = parseFloat(onlineReceivedCashGivenForm.firstPartAmount) || 0;
+            const remainingPartAmount = parseFloat(onlineReceivedCashGivenForm.remainingPartAmount) || 0;
+            
+            // First part subtraction
+            const firstPartGivenBy = onlineReceivedCashGivenForm.firstPartMoneyGiven;
+            if (firstPartGivenBy === 'Cash from Gala') {
+              onBankCashAepsUpdate?.('cash', 'remove', firstPartAmount);
+            } else if (firstPartGivenBy === 'Vaibhav') {
+              onBankCashAepsUpdate?.('collect from vaibhav', 'remove', firstPartAmount);
+            } else if (firstPartGivenBy === 'Omkar') {
+              onBankCashAepsUpdate?.('collect from omkar', 'remove', firstPartAmount);
+            } else if (firstPartGivenBy === 'Uma') {
+              onBankCashAepsUpdate?.('collect from uma', 'remove', firstPartAmount);
+            } else if (firstPartGivenBy === 'Cash Given to Customer by Person') {
+              const firstPersonName = onlineReceivedCashGivenForm.firstPartMoneyGivenPersonName;
+              if (firstPersonName === 'Vaibhav') {
+                onBankCashAepsUpdate?.('collect from vaibhav', 'remove', firstPartAmount);
+              } else if (firstPersonName === 'Omkar') {
+                onBankCashAepsUpdate?.('collect from omkar', 'remove', firstPartAmount);
+              } else if (firstPersonName === 'Uma') {
+                onBankCashAepsUpdate?.('collect from uma', 'remove', firstPartAmount);
+              }
+            }
+            
+            // Remaining part subtraction
+            const remainingPartGivenBy = onlineReceivedCashGivenForm.remainingPartMoneyGiven;
+            if (remainingPartGivenBy === 'Cash from Gala') {
+              onBankCashAepsUpdate?.('cash', 'remove', remainingPartAmount);
+            } else if (remainingPartGivenBy === 'Vaibhav') {
+              onBankCashAepsUpdate?.('collect from vaibhav', 'remove', remainingPartAmount);
+            } else if (remainingPartGivenBy === 'Omkar') {
+              onBankCashAepsUpdate?.('collect from omkar', 'remove', remainingPartAmount);
+            } else if (remainingPartGivenBy === 'Uma') {
+              onBankCashAepsUpdate?.('collect from uma', 'remove', remainingPartAmount);
+            } else if (remainingPartGivenBy === 'Cash Given to Customer by Person') {
+              const remainingPersonName = onlineReceivedCashGivenForm.remainingPartMoneyGivenPersonName;
+              if (remainingPersonName === 'Vaibhav') {
+                onBankCashAepsUpdate?.('collect from vaibhav', 'remove', remainingPartAmount);
+              } else if (remainingPersonName === 'Omkar') {
+                onBankCashAepsUpdate?.('collect from omkar', 'remove', remainingPartAmount);
+              } else if (remainingPersonName === 'Uma') {
+                onBankCashAepsUpdate?.('collect from uma', 'remove', remainingPartAmount);
+              }
+            }
+          }
+        }
+        
+        // Handle Account Holder addition logic
+        if (receivedOnlineAmount > 0) {
+          const receivedOnlineFrom = onlineReceivedCashGivenForm.accountHolder;
+          
+          switch (receivedOnlineFrom) {
+            case 'Vaibhav':
+              onBankCashAepsUpdate?.('collect from vaibhav', 'add', receivedOnlineAmount);
+              break;
+            case 'Omkar':
+              onBankCashAepsUpdate?.('collect from omkar', 'add', receivedOnlineAmount);
+              break;
+            case 'Uma':
+              onBankCashAepsUpdate?.('collect from uma', 'add', receivedOnlineAmount);
+              break;
+            case 'Shop':
+              onBankCashAepsUpdate?.('shop qr', 'add', receivedOnlineAmount);
+              break;
+          }
+        }
+        
+        showMessage('Online Received Cash Given entry added successfully!', 'success');
+        setOnlineReceivedCashGivenForm(defaultOnlineReceivedCashGivenForm);
+        await fetchEntries();
+      } else {
+        throw new Error('Failed to add entry');
+      }
+    } catch (error) {
+      console.error('Error adding entry:', error);
+      console.error('Error details:', error.message);
+      console.error('Error stack:', error.stack);
+      showMessage('Failed to add entry. Please try again.', 'error');
+    } finally {
+      setLoading(false);
+      console.log('Form submission completed');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -756,10 +1034,38 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
         commissionAmount: fundEntry.commissionAmount || '',
         commissionRemark: fundEntry.commissionRemark || ''
       });
+    } else if (entry.type === 'ONLINE_RECEIVED_CASH_GIVEN') {
+      const onlineEntry = entry as Extract<DashboardEntry, { type: 'ONLINE_RECEIVED_CASH_GIVEN' }>;
+      setEditForm({
+        type: 'ONLINE_RECEIVED_CASH_GIVEN',
+        senderName: onlineEntry.senderName || '',
+        senderNumber: onlineEntry.senderNumber || '',
+        receivedOnApplication: onlineEntry.receivedOnApplication || '',
+        accountHolder: onlineEntry.accountHolder || '',
+        accountHolderRemark: onlineEntry.accountHolderRemark || '',
+        receivedOnlineAmount: onlineEntry.receivedOnlineAmount || '',
+        cashGiven: onlineEntry.cashGiven || '',
+        moneyDistributionType: onlineEntry.moneyDistributionType || '',
+        howMoneyGivenSingle: onlineEntry.howMoneyGivenSingle || '',
+        howMoneyGivenSingleRemark: onlineEntry.howMoneyGivenSingleRemark || '',
+        howMoneyGivenSinglePersonName: onlineEntry.howMoneyGivenSinglePersonName || '',
+        firstPartMoneyGiven: onlineEntry.firstPartMoneyGiven || '',
+        firstPartMoneyGivenRemark: onlineEntry.firstPartMoneyGivenRemark || '',
+        firstPartMoneyGivenPersonName: onlineEntry.firstPartMoneyGivenPersonName || '',
+        firstPartAmount: onlineEntry.firstPartAmount || '',
+        remainingPartMoneyGiven: onlineEntry.remainingPartMoneyGiven || '',
+        remainingPartMoneyGivenRemark: onlineEntry.remainingPartMoneyGivenRemark || '',
+        remainingPartMoneyGivenPersonName: onlineEntry.remainingPartMoneyGivenPersonName || '',
+        remainingPartAmount: onlineEntry.remainingPartAmount || '',
+        commissionType: onlineEntry.commissionType || '',
+        commissionAmount: onlineEntry.commissionAmount || '',
+        commissionRemark: onlineEntry.commissionRemark || '',
+        remarks: onlineEntry.remarks || ''
+      });
     } else {
       setEditForm({
         type: entry.type,
-        amount: entry.amount.toString()
+        amount: (entry as any).amount?.toString() || ''
       });
     }
     
@@ -1192,7 +1498,6 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                           required
                         >
-                          <option value="">Select</option>
                           <option value="PhonePe">PhonePe</option>
                           <option value="Paytm">Paytm</option>
                           <option value="Google Pay">Google Pay</option>
@@ -1208,11 +1513,10 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                           required
                         >
-                          <option value="">Select</option>
+                          <option value="Shop Accounts">Shop Accounts</option>
                           <option value="Vaibhav">Vaibhav</option>
                           <option value="Omkar">Omkar</option>
                           <option value="Uma">Uma</option>
-                          <option value="Shop Accounts">Shop Accounts</option>
                           <option value="Other">Other</option>
                         </select>
                       </div>
@@ -1253,7 +1557,6 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                           required
                         >
-                          <option value="">Select</option>
                           <option value="Yes">Yes</option>
                           <option value="No">No</option>
                         </select>
@@ -1268,7 +1571,6 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                           required
                         >
-                          <option value="">Select</option>
                           <option value="Yes">Yes</option>
                           <option value="No">No</option>
                         </select>
@@ -1331,6 +1633,7 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                      <button
                        type="submit"
                        disabled={loading}
+                       onClick={() => console.log('=== SUBMIT BUTTON CLICKED ===')}
                        className={`w-full py-3 rounded-lg font-semibold text-lg shadow-md transition-all ${
                          loading
                            ? 'bg-gray-400 cursor-not-allowed'
@@ -1338,6 +1641,337 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                        }`}
                      >
                        {loading ? 'Saving...' : 'Add Fund Transfer Entry'}
+                     </button>
+                   </form>
+                 ) : activeTab === 4 ? (
+                   <form onSubmit={handleOnlineReceivedCashGivenSubmit} className="flex flex-col gap-6">
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       {/* Basic Info Section */}
+                       <div className="md:col-span-2">
+                         <h3 className="text-lg font-semibold mb-4 text-blue-600">Basic Info</h3>
+                       </div>
+                       
+                       {/* Sender Name */}
+                       <div>
+                         <label className="block text-sm font-semibold mb-1">Sender Name</label>
+                         <input
+                           name="senderName"
+                           value={onlineReceivedCashGivenForm.senderName}
+                           onChange={handleOnlineReceivedCashGivenChange}
+                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                           placeholder="Enter sender name"
+                         />
+                       </div>
+                       
+                       {/* Sender Number */}
+                       <div>
+                         <label className="block text-sm font-semibold mb-1">Sender Number</label>
+                         <input
+                           name="senderNumber"
+                           value={onlineReceivedCashGivenForm.senderNumber}
+                           onChange={handleOnlineReceivedCashGivenChange}
+                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                           placeholder="Enter sender number"
+                         />
+                       </div>
+                     </div>
+                     
+                     {/* Transaction Details Section */}
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       <div className="md:col-span-2">
+                         <h3 className="text-lg font-semibold mb-4 text-blue-600">Transaction Details</h3>
+                       </div>
+                       
+                       {/* Received On Application */}
+                       <div>
+                         <label className="block text-sm font-semibold mb-1">Received On Application</label>
+                         <select
+                           name="receivedOnApplication"
+                           value={onlineReceivedCashGivenForm.receivedOnApplication}
+                           onChange={handleOnlineReceivedCashGivenChange}
+                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                         >
+                           <option value="Shop QR">Shop QR</option>
+                           <option value="PhonePe">PhonePe</option>
+                           <option value="Paytm">Paytm</option>
+                           <option value="Google Pay">Google Pay</option>
+                         </select>
+                       </div>
+                       
+                       {/* Account Holder */}
+                       <div>
+                         <label className="block text-sm font-semibold mb-1">Account Holder</label>
+                         <select
+                           name="accountHolder"
+                           value={onlineReceivedCashGivenForm.accountHolder}
+                           onChange={handleOnlineReceivedCashGivenChange}
+                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                         >
+                           <option value="Shop">Shop</option>
+                           <option value="Vaibhav">Vaibhav</option>
+                           <option value="Omkar">Omkar</option>
+                           <option value="Uma">Uma</option>
+                           <option value="Other">Other</option>
+                         </select>
+                       </div>
+                       
+                       {/* Received Online Amount */}
+                       <div>
+                         <label className="block text-sm font-semibold mb-1">Received Online Amount</label>
+                         <input
+                           type="number"
+                           name="receivedOnlineAmount"
+                           value={onlineReceivedCashGivenForm.receivedOnlineAmount}
+                           onChange={handleOnlineReceivedCashGivenChange}
+                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                           placeholder="Enter received amount"
+                           min="0"
+                           step="0.01"
+                           required
+                         />
+                       </div>
+                       
+                       {/* Cash Given */}
+                       <div>
+                         <label className="block text-sm font-semibold mb-1">Cash Given</label>
+                         <input
+                           type="number"
+                           name="cashGiven"
+                           value={onlineReceivedCashGivenForm.cashGiven}
+                           onChange={handleOnlineReceivedCashGivenChange}
+                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                           placeholder="Enter cash given amount"
+                           min="0"
+                           step="0.01"
+                           required
+                         />
+                       </div>
+                     </div>
+                     
+                     {/* Money Distribution Logic Section */}
+                     <div className="grid grid-cols-1 gap-4">
+                       <div>
+                         <h3 className="text-lg font-semibold mb-4 text-blue-600">Money Distribution Logic</h3>
+                       </div>
+                       
+                       {/* How was the money given? */}
+                       <div>
+                         <label className="block text-sm font-semibold mb-1">How was the money given?</label>
+                         <select
+                           name="moneyDistributionType"
+                           value={onlineReceivedCashGivenForm.moneyDistributionType}
+                           onChange={handleOnlineReceivedCashGivenChange}
+                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                         >
+                           <option value="Full Amount given by One Person">Full Amount given by One Person</option>
+                           <option value="Full Amount given by Two Persons">Full Amount given by Two Persons</option>
+                         </select>
+                       </div>
+                       
+                       {/* Case A: Full Amount given by One Person */}
+                       {onlineReceivedCashGivenForm.moneyDistributionType === "Full Amount given by One Person" && (
+                         <div>
+                           <label className="block text-sm font-semibold mb-1">How Money Given to Customer</label>
+                           <select
+                             name="howMoneyGivenSingle"
+                             value={onlineReceivedCashGivenForm.howMoneyGivenSingle}
+                             onChange={handleOnlineReceivedCashGivenChange}
+                             className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                           >
+                             <option value="Cash from Gala">Cash from Gala</option>
+                             <option value="Other">Other</option>
+                             <option value="Withdrawn from ATM and Given to Customer">Withdrawn from ATM and Given to Customer</option>
+                             <option value="Vaibhav">Vaibhav</option>
+                             <option value="Omkar">Omkar</option>
+                             <option value="Uma">Uma</option>
+                             <option value="Cash Given to Customer by Person">Cash Given to Customer by Person</option>
+                           </select>
+                         </div>
+                       )}
+                       
+                       {/* Case B: Full Amount given by Two Persons */}
+                       {onlineReceivedCashGivenForm.moneyDistributionType === "Full Amount given by Two Persons" && (
+                         <div>
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                             {/* First part of money given */}
+                             <div>
+                               <label className="block text-sm font-semibold mb-1">(A) First part of money given</label>
+                               <select
+                                 name="firstPartMoneyGiven"
+                                 value={onlineReceivedCashGivenForm.firstPartMoneyGiven}
+                                 onChange={handleOnlineReceivedCashGivenChange}
+                                 className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                 required={onlineReceivedCashGivenForm.moneyDistributionType === "Full Amount given by Two Persons"}
+                               >
+                                 <option value="Cash from Gala">Cash from Gala</option>
+                                 <option value="Other">Other</option>
+                                 <option value="Withdrawn from ATM and Given to Customer">Withdrawn from ATM and Given to Customer</option>
+                                 <option value="Vaibhav">Vaibhav</option>
+                                 <option value="Omkar">Omkar</option>
+                                 <option value="Uma">Uma</option>
+                                 <option value="Cash Given to Customer by Person">Cash Given to Customer by Person</option>
+                               </select>
+                             </div>
+                             
+                             {/* Remaining part of money given */}
+                             <div>
+                               <label className="block text-sm font-semibold mb-1">(B) Remaining part of money given</label>
+                               <select
+                                 name="remainingPartMoneyGiven"
+                                 value={onlineReceivedCashGivenForm.remainingPartMoneyGiven}
+                                 onChange={handleOnlineReceivedCashGivenChange}
+                                 className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                 required={onlineReceivedCashGivenForm.moneyDistributionType === "Full Amount given by Two Persons"}
+                               >
+                                 <option value="Cash from Gala">Cash from Gala</option>
+                                 <option value="Other">Other</option>
+                                 <option value="Withdrawn from ATM and Given to Customer">Withdrawn from ATM and Given to Customer</option>
+                                 <option value="Vaibhav">Vaibhav</option>
+                                 <option value="Omkar">Omkar</option>
+                                 <option value="Uma">Uma</option>
+                                 <option value="Cash Given to Customer by Person">Cash Given to Customer by Person</option>
+                               </select>
+                             </div>
+                           </div>
+                           
+                           {/* Amount fields for two-person scenario */}
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                             <div>
+                               <label className="block text-sm font-semibold mb-1">First Part Amount</label>
+                               <input
+                                 type="number"
+                                 name="firstPartAmount"
+                                 value={onlineReceivedCashGivenForm.firstPartAmount}
+                                 onChange={handleOnlineReceivedCashGivenChange}
+                                 className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                 placeholder="Enter first part amount"
+                                 required={onlineReceivedCashGivenForm.moneyDistributionType === "Full Amount given by Two Persons"}
+                               />
+                             </div>
+                             
+                             <div>
+                               <label className="block text-sm font-semibold mb-1">Remaining Part Amount</label>
+                               <input
+                                 type="number"
+                                 name="remainingPartAmount"
+                                 value={onlineReceivedCashGivenForm.remainingPartAmount}
+                                 onChange={handleOnlineReceivedCashGivenChange}
+                                 className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                 placeholder="Enter remaining part amount"
+                                 required={onlineReceivedCashGivenForm.moneyDistributionType === "Full Amount given by Two Persons"}
+                               />
+                             </div>
+                           </div>
+                         </div>
+                       )}
+                     </div>
+                     
+                     {/* Conditional Inputs Section */}
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       {/* Conditional Remarks Field */}
+                       {(
+                         (onlineReceivedCashGivenForm.moneyDistributionType === "Full Amount given by One Person" && 
+                          (onlineReceivedCashGivenForm.howMoneyGivenSingle === "Other" || 
+                           onlineReceivedCashGivenForm.howMoneyGivenSingle === "Withdrawn from ATM and Given to Customer")) ||
+                         (onlineReceivedCashGivenForm.moneyDistributionType === "Full Amount given by Two Persons" && 
+                          (onlineReceivedCashGivenForm.firstPartMoneyGiven === "Other" || 
+                           onlineReceivedCashGivenForm.firstPartMoneyGiven === "Withdrawn from ATM and Given to Customer" ||
+                           onlineReceivedCashGivenForm.remainingPartMoneyGiven === "Other" || 
+                           onlineReceivedCashGivenForm.remainingPartMoneyGiven === "Withdrawn from ATM and Given to Customer"))
+                       ) && (
+                         <div>
+                           <label className="block text-sm font-semibold mb-1">Remarks</label>
+                           <input
+                             name="remarks"
+                             value={onlineReceivedCashGivenForm.remarks}
+                             onChange={handleOnlineReceivedCashGivenChange}
+                             className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                             placeholder="Enter remarks"
+                           />
+                         </div>
+                       )}
+                       
+                       {/* Conditional Person Name Field */}
+                       {(
+                         (onlineReceivedCashGivenForm.moneyDistributionType === "Full Amount given by One Person" && 
+                          onlineReceivedCashGivenForm.howMoneyGivenSingle === "Cash Given to Customer by Person") ||
+                         (onlineReceivedCashGivenForm.moneyDistributionType === "Full Amount given by Two Persons" && 
+                          (onlineReceivedCashGivenForm.firstPartMoneyGiven === "Cash Given to Customer by Person" ||
+                           onlineReceivedCashGivenForm.remainingPartMoneyGiven === "Cash Given to Customer by Person"))
+                       ) && (
+                         <div>
+                           <label className="block text-sm font-semibold mb-1">Enter Person Name</label>
+                           <input
+                             name="personName"
+                             value={onlineReceivedCashGivenForm.personName}
+                             onChange={handleOnlineReceivedCashGivenChange}
+                             className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                             placeholder="Enter person name"
+                           />
+                         </div>
+                       )}
+                     </div>
+                     
+                     {/* Commission Section */}
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                       <div className="md:col-span-3">
+                         <h3 className="text-lg font-semibold mb-4 text-blue-600">Commission Section</h3>
+                       </div>
+                       
+                       {/* Commission Type */}
+                       <div>
+                         <label className="block text-sm font-semibold mb-1">Commission Type</label>
+                         <select
+                           name="commissionType"
+                           value={onlineReceivedCashGivenForm.commissionType}
+                           onChange={handleOnlineReceivedCashGivenChange}
+                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                           required
+                         >
+                           <option value="No Commission">No Commission</option>
+                           <option value="Fixed">Fixed</option>
+                           <option value="Percentage">Percentage</option>
+                         </select>
+                       </div>
+                       
+                       {/* Commission Amount */}
+                       <div>
+                         <label className="block text-sm font-semibold mb-1">Commission Amount</label>
+                         <input
+                           type="number"
+                           name="commissionAmount"
+                           value={onlineReceivedCashGivenForm.commissionAmount}
+                           onChange={handleOnlineReceivedCashGivenChange}
+                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                           placeholder="Enter commission amount"
+                           min="0"
+                           step="0.01"
+                         />
+                       </div>
+                       
+                       {/* Commission Remark */}
+                       <div>
+                         <label className="block text-sm font-semibold mb-1">Commission Remark</label>
+                         <input
+                           name="commissionRemark"
+                           value={onlineReceivedCashGivenForm.commissionRemark}
+                           onChange={handleOnlineReceivedCashGivenChange}
+                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                           placeholder="Enter commission remark"
+                         />
+                       </div>
+                     </div>
+                     
+                     <button
+                       type="submit"
+                       disabled={loading}
+                       className={`w-full py-3 rounded-lg font-semibold text-lg shadow-md transition-all ${
+                         loading
+                           ? 'bg-gray-400 cursor-not-allowed'
+                           : 'bg-gradient-to-r from-blue-600 to-emerald-500 text-white hover:from-blue-700 hover:to-emerald-600'
+                       }`}
+                     >
+                       {loading ? 'Saving...' : 'Add Online Received Cash Given Entry'}
                      </button>
                    </form>
                  ) : (
@@ -1641,6 +2275,7 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                       <option value="BANK_CASH_AEPS">Bank/Cash/AEPS</option>
                       <option value="AEPS">AEPS Transaction</option>
                       <option value="ADD FUND TRANSFER ENTRY">Fund Transfer</option>
+                      <option value="ONLINE_RECEIVED_CASH_GIVEN">Online Received / Cash Given</option>
                       <option value="RECHARGE_ENTRY">Recharge Entry</option>
                       <option value="BILL_PAYMENT_ENTRY">Bill Payment Entry</option>
                       <option value="SIM_SOLD">SIM Sold</option>
@@ -1725,24 +2360,37 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                               )}
                               {entry.type === 'ADD FUND TRANSFER ENTRY' && (
                                 <div>
-                                  <div><strong>Customer Name:</strong> {entry.customerName || 'N/A'}</div>
-                                  <div><strong>Customer Number:</strong> {entry.customerNumber || 'N/A'}</div>
-                                  <div><strong>Beneficiary Name:</strong> {entry.beneficiaryName || 'N/A'}</div>
-                                  <div><strong>Beneficiary Number:</strong> {entry.beneficiaryNumber || 'N/A'}</div>
-                                  <div><strong>Application Name:</strong> {entry.applicationName || 'N/A'}</div>
-                                  <div><strong>Transferred From:</strong> {entry.transferredFrom || 'N/A'}</div>
-                                  <div><strong>Amount:</strong> ₹{entry.amount || '0'}</div>
-                                  <div><strong>Cash Received:</strong> {entry.cashReceived || 'N/A'}</div>
-                                  <div><strong>Added in Gala:</strong> {entry.addedInGala || 'N/A'}</div>
-                                  <div><strong>Commission Type:</strong> {entry.commissionType || 'N/A'}</div>
-                                  <div><strong>Commission Amount:</strong> ₹{entry.commissionAmount || '0'}</div>
+                                  <div><strong>Customer:</strong> {entry.customerName}</div>
+                                  <div><strong>Beneficiary:</strong> {entry.beneficiaryName}</div>
+                                  <div><strong>Application:</strong> {entry.applicationName}</div>
                                   {entry.transferredFromRemark && <div><strong>Transfer Remark:</strong> {entry.transferredFromRemark}</div>}
                                   {entry.addedInGalaRemark && <div><strong>Gala Remark:</strong> {entry.addedInGalaRemark}</div>}
                                   {entry.commissionRemark && <div><strong>Commission Remark:</strong> {entry.commissionRemark}</div>}
                                   {entry.remarks && <div><strong>Remarks:</strong> {entry.remarks}</div>}
                                 </div>
                               )}
-                              {!['MOBILE_BALANCE', 'BANK_CASH_AEPS', 'AEPS', 'ADD FUND TRANSFER ENTRY'].includes(entry.type) && (
+                              {entry.type === 'ONLINE_RECEIVED_CASH_GIVEN' && (
+                                <div>
+                                  <div><strong>Sender:</strong> {entry.senderName} ({entry.senderNumber})</div>
+                                  <div><strong>Received On:</strong> {entry.receivedOnApplication}</div>
+                                  <div><strong>Account Holder:</strong> {entry.accountHolder}</div>
+                                  <div><strong>Online Amount:</strong> ₹{entry.receivedOnlineAmount}</div>
+                                  <div><strong>Cash Given:</strong> ₹{entry.cashGiven}</div>
+                                  <div><strong>Distribution:</strong> {entry.moneyDistributionType}</div>
+                                  {entry.moneyDistributionType === 'Full Amount given by One Person' && (
+                                    <div><strong>Money Given:</strong> {entry.howMoneyGivenSingle} {entry.howMoneyGivenSinglePersonName && `(${entry.howMoneyGivenSinglePersonName})`}</div>
+                                  )}
+                                  {entry.moneyDistributionType === 'Amount given by Two Person' && (
+                                    <div>
+                                      <div><strong>First Part:</strong> {entry.firstPartMoneyGiven} - ₹{entry.firstPartAmount} {entry.firstPartMoneyGivenPersonName && `(${entry.firstPartMoneyGivenPersonName})`}</div>
+                                      <div><strong>Remaining Part:</strong> {entry.remainingPartMoneyGiven} - ₹{entry.remainingPartAmount} {entry.remainingPartMoneyGivenPersonName && `(${entry.remainingPartMoneyGivenPersonName})`}</div>
+                                    </div>
+                                  )}
+                                  {entry.commissionType !== 'No Commission' && <div><strong>Commission:</strong> {entry.commissionType} - ₹{entry.commissionAmount}</div>}
+                                  {entry.remarks && <div><strong>Remarks:</strong> {entry.remarks}</div>}
+                                </div>
+                              )}
+                              {!['MOBILE_BALANCE', 'BANK_CASH_AEPS', 'AEPS', 'ADD FUND TRANSFER ENTRY', 'ONLINE_RECEIVED_CASH_GIVEN'].includes(entry.type) && (
                                 <div>
                                   <div>General entry</div>
                                   {entry.remarks && <div><strong>Remarks:</strong> {entry.remarks}</div>}
@@ -1750,7 +2398,10 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                               )}
                             </td>
                             <td className="border border-gray-300 px-4 py-2 font-semibold">
-                              ₹{entry.amount}
+                              {entry.type === 'ONLINE_RECEIVED_CASH_GIVEN' ? 
+                                `₹${entry.receivedOnlineAmount}` : 
+                                `₹${entry.amount || '0'}`
+                              }
                             </td>
                             <td className="border border-gray-300 px-4 py-2">
                               <div className="flex space-x-2">
