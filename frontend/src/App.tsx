@@ -632,8 +632,10 @@ function App() {
           uploadedDocuments: [],
           remarks: t.remarks || '',
           status: t.status || 'unassigned',
-          createdById: t.createdBy || '',
-          updatedById: t.updatedBy || ''
+          createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
+          updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
+          createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
+          updatedByName: typeof t.updatedBy === 'object' ? (t.updatedBy?.username || t.updatedBy?.email || '') : ''
         };
         setTasks(prev => prev.map(task => task.id === mapped.id ? mapped : task));
         setEditingTask(null);
@@ -666,8 +668,10 @@ function App() {
           uploadedDocuments: [],
           remarks: t.remarks || '',
           status: t.status || 'unassigned',
-          createdById: t.createdBy || '',
-          updatedById: t.updatedBy || ''
+          createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
+          updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
+          createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
+          updatedByName: typeof t.updatedBy === 'object' ? (t.updatedBy?.username || t.updatedBy?.email || '') : ''
         };
         setTasks(prev => [mapped, ...prev]);
         // If new customer, ensure a client exists

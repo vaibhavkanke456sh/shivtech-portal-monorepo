@@ -334,10 +334,7 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                        <Edit size={16} />
                      </button>
                      <button
-                       onClick={() => {
-                         console.log('Eye button clicked for task:', task.id, task.customerName);
-                         toggleDetails(task.id);
-                       }}
+                       onClick={() => toggleDetails(task.id)}
                        className="bg-red-500 text-white px-2 py-1 rounded"
                        title={expandedTasks[task.id] ? 'Hide Details' : 'Show Details'}
                      >
