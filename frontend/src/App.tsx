@@ -1724,6 +1724,7 @@ function App() {
         existingCustomers={clients.map(c => c.name)}
         onAddService={handleAddService}
         onAddEmployee={handleAddEmployee}
+        editingTask={editingTask}
       />
     </div>
   );

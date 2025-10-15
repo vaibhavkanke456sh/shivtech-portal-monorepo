@@ -47,9 +47,7 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
     }
   }
   
-  // Debug logging
-  console.log('EnhancedTaskList received tasks:', tasks);
-  console.log('Filtered tasks:', filteredTasks);
+  
 
   const getServiceName = (serviceId: string) => {
     const service = services.find(s => s.name === serviceId);
@@ -98,15 +96,8 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
   };
 
   const toggleDetails = (taskId: string) => {
-    console.log('Toggling details for task ID:', taskId);
-    const task = filteredTasks.find(t => t.id === taskId);
-    console.log('Task data:', task);
-    console.log('Current expanded state:', expandedTasks);
-    setExpandedTasks(prev => {
-      const newState = { ...prev, [taskId]: !prev[taskId] };
-      console.log('New expanded state:', newState);
-      return newState;
-    });
+    const newState = { ...expandedTasks, [taskId]: !expandedTasks[taskId] };
+    setExpandedTasks(newState);
   };
 
   return (
@@ -337,7 +328,7 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                   <div className="flex items-center gap-2">
                                          <button
                        onClick={() => onTaskEdit(task)}
-                       className="text-blue-600 hover:text-blue-800"
+                       className="text-blue-600 hover:text-blue-800 p-1"
                        title="Edit Task"
                      >
                        <Edit size={16} />
@@ -362,11 +353,7 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                   </div>
                 </td>
               </tr>
-                             {(() => {
-                 const isExpanded = expandedTasks[task.id];
-                 console.log(`Task ${task.id} (${task.customerName}) expanded:`, isExpanded);
-                 return isExpanded;
-               })() && (
+                             {expandedTasks[task.id] && (
                 <tr>
                   <td className="px-6 py-4 bg-gray-50" colSpan={9}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">

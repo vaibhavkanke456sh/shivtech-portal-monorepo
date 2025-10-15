@@ -73,13 +73,37 @@ const EnhancedTaskModal: React.FC<EnhancedTaskModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setFormData(prev => ({
-        ...prev,
-        serialNo: generateTaskSerial(),
-        date: getTodayDate()
-      }));
+      if (editingTask) {
+        // Pre-fill form with existing task data for editing
+        setFormData({
+          serialNo: editingTask.serialNo || '',
+          date: editingTask.date || getTodayDate(),
+          taskName: editingTask.taskName || '',
+          customerName: editingTask.customerName || '',
+          customerType: editingTask.customerType || 'new',
+          serviceDeliveryDate: editingTask.serviceDeliveryDate || '',
+          taskType: editingTask.taskType || 'normal',
+          assignedTo: editingTask.assignedTo || '',
+          serviceCharge: editingTask.serviceCharge || 0,
+          finalCharges: editingTask.finalCharges || 0,
+          paymentMode: editingTask.paymentMode || 'cash',
+          paymentRemarks: editingTask.paymentRemarks || '',
+          amountCollected: editingTask.amountCollected || 0,
+          unpaidAmount: editingTask.unpaidAmount || 0,
+          documentDetails: editingTask.documentDetails || '',
+          uploadedDocuments: editingTask.uploadedDocuments || [],
+          remarks: editingTask.remarks || ''
+        });
+      } else {
+        // Reset form for new task
+        setFormData(prev => ({
+          ...prev,
+          serialNo: generateTaskSerial(),
+          date: getTodayDate()
+        }));
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, editingTask]);
 
   useEffect(() => {
     const unpaidAmount = Math.max(formData.finalCharges - formData.amountCollected, 0);
@@ -195,7 +219,7 @@ const EnhancedTaskModal: React.FC<EnhancedTaskModalProps> = ({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl max-w-6xl w-full max-h-[95vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b">
-          <h2 className="text-xl font-semibold">Add New Task</h2>
+          <h2 className="text-xl font-semibold">{editingTask ? 'Edit Task' : 'Add New Task'}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X size={24} />
           </button>
@@ -581,7 +605,7 @@ const EnhancedTaskModal: React.FC<EnhancedTaskModalProps> = ({
               type="submit"
               className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
             >
-              Save Task
+              {editingTask ? 'Update Task' : 'Save Task'}
             </button>
           </div>
         </form>
