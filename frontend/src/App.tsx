@@ -114,6 +114,9 @@ function App() {
         case 'collect from uma':
           updated.uma += adjustedAmount;
           break;
+        case 'collect from vaishnavi':
+          updated.vaishnavi += adjustedAmount;
+          break;
         case 'shop qr':
           updated.shopqr += adjustedAmount;
           break;
@@ -286,6 +289,9 @@ function App() {
               case 'Uma':
                 newBankBalances.uma -= cashGiven;
                 break;
+              case 'Vaishnavi':
+                newBankBalances.vaishnavi -= cashGiven;
+                break;
               case 'Cash Given to Customer by Person':
                 if (howMoneyGivenSinglePersonName === 'Vaibhav') {
                   newBankBalances.vaibhav -= cashGiven;
@@ -293,6 +299,8 @@ function App() {
                   newBankBalances.omkar -= cashGiven;
                 } else if (howMoneyGivenSinglePersonName === 'Uma') {
                   newBankBalances.uma -= cashGiven;
+                } else if (howMoneyGivenSinglePersonName === 'Vaishnavi') {
+                  newBankBalances.vaishnavi -= cashGiven;
                 }
                 break;
             }
@@ -316,6 +324,9 @@ function App() {
                 case 'Uma':
                   newBankBalances.uma -= firstPartAmount;
                   break;
+                case 'Vaishnavi':
+                  newBankBalances.vaishnavi -= firstPartAmount;
+                  break;
                 case 'Cash Given to Customer by Person':
                   if (firstPartMoneyGivenPersonName === 'Vaibhav') {
                     newBankBalances.vaibhav -= firstPartAmount;
@@ -323,6 +334,8 @@ function App() {
                     newBankBalances.omkar -= firstPartAmount;
                   } else if (firstPartMoneyGivenPersonName === 'Uma') {
                     newBankBalances.uma -= firstPartAmount;
+                  } else if (firstPartMoneyGivenPersonName === 'Vaishnavi') {
+                    newBankBalances.vaishnavi -= firstPartAmount;
                   }
                   break;
               }
@@ -347,6 +360,9 @@ function App() {
                 case 'Uma':
                   newBankBalances.uma -= remainingPartAmount;
                   break;
+                case 'Vaishnavi':
+                  newBankBalances.vaishnavi -= remainingPartAmount;
+                  break;
                 case 'Cash Given to Customer by Person':
                   if (remainingPartMoneyGivenPersonName === 'Vaibhav') {
                     newBankBalances.vaibhav -= remainingPartAmount;
@@ -354,6 +370,8 @@ function App() {
                     newBankBalances.omkar -= remainingPartAmount;
                   } else if (remainingPartMoneyGivenPersonName === 'Uma') {
                     newBankBalances.uma -= remainingPartAmount;
+                  } else if (remainingPartMoneyGivenPersonName === 'Vaishnavi') {
+                    newBankBalances.vaishnavi -= remainingPartAmount;
                   }
                   break;
               }
@@ -488,6 +506,7 @@ function App() {
     vaibhav: 0,
     omkar: 0,
     uma: 0,
+    vaishnavi: 0,
     shopqr: 0
   });
 

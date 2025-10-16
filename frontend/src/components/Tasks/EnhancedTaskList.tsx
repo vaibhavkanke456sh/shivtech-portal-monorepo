@@ -132,6 +132,7 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                 <option value="unassigned">Unassigned</option>
                 <option value="vaibhav">vaibhav</option>
                 <option value="omkar">omkar</option>
+                <option value="vaishnavi">vaishnavi</option>
               </select>
             </div>
             

@@ -7,7 +7,7 @@ const fundTransferSchema = new mongoose.Schema(
     beneficiaryName: { type: String, required: true, trim: true },
     beneficiaryNumber: { type: String, required: true, trim: true },
     applicationName: { type: String, required: true, enum: ['PhonePe', 'Paytm', 'Google Pay', 'Other'] },
-    transferredFrom: { type: String, required: true, enum: ['Vaibhav', 'Omkar', 'Uma', 'Shop Accounts', 'Other'] },
+    transferredFrom: { type: String, required: true, enum: ['Vaibhav', 'Omkar', 'Uma', 'Vaishnavi', 'Shop Accounts', 'Other'] },
     transferredFromRemark: { type: String, default: '' },
     amount: { type: Number, required: true, min: 0 },
     cashReceived: { type: String, required: true, enum: ['Yes', 'No'] },

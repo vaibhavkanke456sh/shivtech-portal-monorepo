@@ -199,7 +199,7 @@ interface SalesProps {
   token?: string;
   onAepsBalanceUpdate?: (aepsIdType: string, amount: number, payoutInfo?: { transferredFrom?: string; cashFromGala?: boolean; withdrawnFromId?: boolean; commissionType?: string; commissionAmount?: number }) => void;
   onFundTransferBalanceUpdate?: (
-    account: 'vaibhav' | 'omkar' | 'uma' | 'shopaccounts' | 'cash',
+    account: 'vaibhav' | 'omkar' | 'uma' | 'vaishnavi' | 'shopaccounts' | 'cash',
     amount: number,
     commissionType?: 'cash' | 'online',
     commissionAmount?: number
@@ -778,6 +778,9 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
               case 'Uma':
                 onBankCashAepsUpdate?.('collect from uma', 'remove', cashGivenAmount);
                 break;
+              case 'Vaishnavi':
+                onBankCashAepsUpdate?.('collect from vaishnavi', 'remove', cashGivenAmount);
+                break;
               case 'Cash Given to Customer by Person':
                 // Check person name to determine which account to subtract from
                 const personName = onlineReceivedCashGivenForm.howMoneyGivenSinglePersonName;
@@ -787,6 +790,8 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                   onBankCashAepsUpdate?.('collect from omkar', 'remove', cashGivenAmount);
                 } else if (personName === 'Uma') {
                   onBankCashAepsUpdate?.('collect from uma', 'remove', cashGivenAmount);
+                } else if (personName === 'Vaishnavi') {
+                  onBankCashAepsUpdate?.('collect from vaishnavi', 'remove', cashGivenAmount);
                 }
                 break;
             }
@@ -805,6 +810,8 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
               onBankCashAepsUpdate?.('collect from omkar', 'remove', firstPartAmount);
             } else if (firstPartGivenBy === 'Uma') {
               onBankCashAepsUpdate?.('collect from uma', 'remove', firstPartAmount);
+            } else if (firstPartGivenBy === 'Vaishnavi') {
+              onBankCashAepsUpdate?.('collect from vaishnavi', 'remove', firstPartAmount);
             } else if (firstPartGivenBy === 'Cash Given to Customer by Person') {
               const firstPersonName = onlineReceivedCashGivenForm.firstPartMoneyGivenPersonName;
               if (firstPersonName === 'Vaibhav') {
@@ -813,6 +820,8 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                 onBankCashAepsUpdate?.('collect from omkar', 'remove', firstPartAmount);
               } else if (firstPersonName === 'Uma') {
                 onBankCashAepsUpdate?.('collect from uma', 'remove', firstPartAmount);
+              } else if (firstPersonName === 'Vaishnavi') {
+                onBankCashAepsUpdate?.('collect from vaishnavi', 'remove', firstPartAmount);
               }
             }
             
@@ -826,6 +835,8 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
               onBankCashAepsUpdate?.('collect from omkar', 'remove', remainingPartAmount);
             } else if (remainingPartGivenBy === 'Uma') {
               onBankCashAepsUpdate?.('collect from uma', 'remove', remainingPartAmount);
+            } else if (remainingPartGivenBy === 'Vaishnavi') {
+              onBankCashAepsUpdate?.('collect from vaishnavi', 'remove', remainingPartAmount);
             } else if (remainingPartGivenBy === 'Cash Given to Customer by Person') {
               const remainingPersonName = onlineReceivedCashGivenForm.remainingPartMoneyGivenPersonName;
               if (remainingPersonName === 'Vaibhav') {
@@ -834,6 +845,8 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                 onBankCashAepsUpdate?.('collect from omkar', 'remove', remainingPartAmount);
               } else if (remainingPersonName === 'Uma') {
                 onBankCashAepsUpdate?.('collect from uma', 'remove', remainingPartAmount);
+              } else if (remainingPersonName === 'Vaishnavi') {
+                onBankCashAepsUpdate?.('collect from vaishnavi', 'remove', remainingPartAmount);
               }
             }
           }
@@ -852,6 +865,9 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
               break;
             case 'Uma':
               onBankCashAepsUpdate?.('collect from uma', 'add', receivedOnlineAmount);
+              break;
+            case 'Vaishnavi':
+              onBankCashAepsUpdate?.('collect from vaishnavi', 'add', receivedOnlineAmount);
               break;
             case 'Shop':
               onBankCashAepsUpdate?.('shop qr', 'add', receivedOnlineAmount);
@@ -1339,6 +1355,7 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                             <option value="Vaibhav">Vaibhav</option>
                             <option value="Omkar">Omkar</option>
                             <option value="Uma">Uma</option>
+                            <option value="Vaishnavi">Vaishnavi</option>
                             <option value="Shop Accounts">Shop Accounts</option>
                             <option value="Other">Other</option>
                           </select>
@@ -1517,6 +1534,7 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                           <option value="Vaibhav">Vaibhav</option>
                           <option value="Omkar">Omkar</option>
                           <option value="Uma">Uma</option>
+                          <option value="Vaishnavi">Vaishnavi</option>
                           <option value="Other">Other</option>
                         </select>
                       </div>
@@ -1711,6 +1729,7 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                            <option value="Vaibhav">Vaibhav</option>
                            <option value="Omkar">Omkar</option>
                            <option value="Uma">Uma</option>
+                           <option value="Vaishnavi">Vaishnavi</option>
                            <option value="Other">Other</option>
                          </select>
                        </div>
@@ -1784,6 +1803,7 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                              <option value="Vaibhav">Vaibhav</option>
                              <option value="Omkar">Omkar</option>
                              <option value="Uma">Uma</option>
+                             <option value="Vaishnavi">Vaishnavi</option>
                              <option value="Cash Given to Customer by Person">Cash Given to Customer by Person</option>
                            </select>
                          </div>
@@ -1809,6 +1829,7 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                                  <option value="Vaibhav">Vaibhav</option>
                                  <option value="Omkar">Omkar</option>
                                  <option value="Uma">Uma</option>
+                                 <option value="Vaishnavi">Vaishnavi</option>
                                  <option value="Cash Given to Customer by Person">Cash Given to Customer by Person</option>
                                </select>
                              </div>
@@ -2161,6 +2182,7 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                           <option value="Collect From Vaibhav">Collect From Vaibhav</option>
                           <option value="Collect From Omkar">Collect From Omkar</option>
                           <option value="Collect From Uma">Collect From Uma</option>
+                          <option value="Collect From Vaishnavi">Collect From Vaishnavi</option>
                           <option value="Shop QR">Shop QR</option>
                         </select>
                       </div>

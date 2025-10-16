@@ -16,7 +16,7 @@ const onlineReceivedCashGivenSchema = new mongoose.Schema(
     receivedOnlineFrom: {
       type: String,
       required: true,
-      enum: ['Vaibhav', 'Omkar', 'Uma', 'Shop'],
+      enum: ['Vaibhav', 'Omkar', 'Uma', 'Vaishnavi', 'Shop'],
       trim: true
     },
     
@@ -41,7 +41,7 @@ const onlineReceivedCashGivenSchema = new mongoose.Schema(
     },
     accountHolder: {
       type: String,
-      enum: ['Vaibhav', 'Omkar', 'Uma', 'Shop'],
+      enum: ['Vaibhav', 'Omkar', 'Uma', 'Vaishnavi', 'Shop'],
       trim: true
     },
     accountHolderRemark: {
@@ -79,24 +79,24 @@ const onlineReceivedCashGivenSchema = new mongoose.Schema(
     // Single person scenario fields
     howMoneyGivenSingle: {
       type: String,
-      enum: ['Cash from Gala', 'Vaibhav', 'Omkar', 'Uma', 'Cash Given to Customer by Person'],
+      enum: ['Cash from Gala', 'Vaibhav', 'Omkar', 'Uma', 'Vaishnavi', 'Cash Given to Customer by Person'],
       trim: true
     },
     howMoneyGivenSinglePersonName: {
       type: String,
-      enum: ['Vaibhav', 'Omkar', 'Uma'],
+      enum: ['Vaibhav', 'Omkar', 'Uma', 'Vaishnavi'],
       trim: true
     },
     
     // Two persons scenario fields
     firstPartMoneyGiven: {
       type: String,
-      enum: ['Cash from Gala', 'Vaibhav', 'Omkar', 'Uma', 'Cash Given to Customer by Person'],
+      enum: ['Cash from Gala', 'Vaibhav', 'Omkar', 'Uma', 'Vaishnavi', 'Cash Given to Customer by Person'],
       trim: true
     },
     firstPartMoneyGivenPersonName: {
       type: String,
-      enum: ['Vaibhav', 'Omkar', 'Uma'],
+      enum: ['Vaibhav', 'Omkar', 'Uma', 'Vaishnavi'],
       trim: true
     },
     firstPartAmount: {
@@ -106,12 +106,12 @@ const onlineReceivedCashGivenSchema = new mongoose.Schema(
     
     remainingPartMoneyGiven: {
       type: String,
-      enum: ['Cash from Gala', 'Vaibhav', 'Omkar', 'Uma', 'Cash Given to Customer by Person'],
+      enum: ['Cash from Gala', 'Vaibhav', 'Omkar', 'Uma', 'Vaishnavi', 'Cash Given to Customer by Person'],
       trim: true
     },
     remainingPartMoneyGivenPersonName: {
       type: String,
-      enum: ['Vaibhav', 'Omkar', 'Uma'],
+      enum: ['Vaibhav', 'Omkar', 'Uma', 'Vaishnavi'],
       trim: true
     },
     remainingPartAmount: {

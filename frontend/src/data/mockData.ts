@@ -40,7 +40,8 @@ export const dashboardData: DashboardData = {
   ],
   employees: [
     { id: 'emp_vaibhav', name: 'vaibhav' },
-    { id: 'emp_omkar', name: 'omkar' }
+    { id: 'emp_omkar', name: 'omkar' },
+    { id: 'emp_vaishnavi', name: 'vaishnavi' }
   ],
   savedTasks: [
     'Mobile Recharge',
