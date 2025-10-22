@@ -56,7 +56,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data, onAddTask, onAddClient, onS
       {/* Left Column */}
       <div className="xl:col-span-3 space-y-6">
         {/* Status Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-8 gap-3">
           <StatusCard 
             code="UAT" 
             label="Unassigned Tasks" 
@@ -99,6 +99,13 @@ const Dashboard: React.FC<DashboardProps> = ({ data, onAddTask, onAddClient, onS
             label="Service Delivered" 
             value={data.statusCounts.SDT} 
             onClick={() => onStatusCardClick?.('service-delivered')}
+          />
+          <StatusCard 
+            code="UPT" 
+            label="Unpaid Tasks" 
+            value={data.statusCounts.UPT} 
+            important 
+            onClick={() => onStatusCardClick?.('unpaid')}
           />
         </div>
 

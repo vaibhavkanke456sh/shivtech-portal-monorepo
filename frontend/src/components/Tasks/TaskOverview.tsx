@@ -16,7 +16,8 @@ const TaskOverview: React.FC<TaskOverviewProps> = ({ tasks, onFilterChange, acti
       completed: tasks.filter(t => t.status === 'completed').length,
       doNow: tasks.filter(t => t.taskType === 'do-now').length,
       urgent: tasks.filter(t => t.taskType === 'urgent' && t.status !== 'completed').length,
-      delivered: tasks.filter(t => t.status === 'completed').length
+      delivered: tasks.filter(t => t.status === 'service-delivered').length,
+      unpaid: tasks.filter(t => t.unpaidAmount > 0).length
     };
   };
 
@@ -64,11 +65,17 @@ const TaskOverview: React.FC<TaskOverviewProps> = ({ tasks, onFilterChange, acti
       label: 'Service Delivered', 
       count: counts.delivered, 
       color: 'bg-emerald-100 text-emerald-800 border-emerald-300' 
+    },
+    { 
+      key: 'unpaid', 
+      label: 'Unpaid Tasks', 
+      count: counts.unpaid, 
+      color: 'bg-orange-100 text-orange-800 border-orange-300' 
     }
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
+    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-6">
       {taskCards.map((card) => (
         <button
           key={card.key}

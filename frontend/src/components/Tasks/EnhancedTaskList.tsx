@@ -33,6 +33,21 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
   // Apply base filter first, then date and assignedTo filters
   let filteredTasks = filter ? tasks.filter(filter) : tasks;
   
+  // Debug logging for filtering issues
+  if (filter && tasks.length > 0) {
+    console.log(`🔍 EnhancedTaskList "${title}" filtering:`, {
+      totalTasks: tasks.length,
+      filteredTasks: filteredTasks.length,
+      sampleTask: tasks[0] ? {
+        id: tasks[0].id,
+        status: tasks[0].status,
+        taskType: tasks[0].taskType,
+        unpaidAmount: tasks[0].unpaidAmount,
+        passesFilter: filter(tasks[0])
+      } : null
+    });
+  }
+  
   // Apply date filter
   if (dateFilter) {
     filteredTasks = filteredTasks.filter(task => task.date === dateFilter);

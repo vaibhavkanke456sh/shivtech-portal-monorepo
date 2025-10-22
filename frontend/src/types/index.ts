@@ -6,6 +6,7 @@ export interface StatusCounts {
   UAT: number; // Unassigned Tasks
   IMT: number; // Do Now Tasks
   URT: number; // Urgent Tasks
+  UPT: number; // Unpaid Tasks
 }
 
 export interface MobileBalances {

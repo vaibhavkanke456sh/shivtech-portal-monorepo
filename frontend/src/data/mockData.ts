@@ -8,7 +8,8 @@ export const dashboardData: DashboardData = {
     AST: 5,
     UAT: 2,
     IMT: 1,
-    URT: 0
+    URT: 0,
+    UPT: 0
   },
   mobileBalances: {
     airtel: 3500,

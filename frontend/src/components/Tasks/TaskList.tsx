@@ -14,19 +14,11 @@ const TaskList: React.FC<TaskListProps> = ({ tasks, services, title, filter }) =
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
 
   // Debug logging - Updated for deployment
-  console.log('TaskList received tasks:', tasks);
-  console.log('Filtered tasks:', filteredTasks);
+  // console.log('TaskList received tasks:', tasks);
+  // console.log('Filtered tasks:', filteredTasks);
 
   const toggleDetails = (taskId: string) => {
-    console.log('Toggling details for task ID:', taskId);
-    const task = filteredTasks.find(t => t.id === taskId);
-    console.log('Task data:', task);
-    console.log('Current expanded state:', expandedTasks);
-    setExpandedTasks(prev => {
-      const newState = { ...prev, [taskId]: !prev[taskId] };
-      console.log('New expanded state:', newState);
-      return newState;
-    });
+    setExpandedTasks(prev => ({ ...prev, [taskId]: !prev[taskId] }));
   };
 
   const getServiceName = (serviceName: string) => {

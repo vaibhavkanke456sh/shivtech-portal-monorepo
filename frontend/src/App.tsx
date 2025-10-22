@@ -547,7 +547,8 @@ function App() {
       UAT: tasks.filter(t => t.status === 'unassigned').length,
       UGT: tasks.filter(t => t.taskType === 'urgent').length,
       IMT: tasks.filter(t => t.taskType === 'do-now' && t.status !== 'completed').length,
-      URT: tasks.filter(t => t.taskType === 'urgent' && t.status !== 'completed').length
+      URT: tasks.filter(t => t.taskType === 'urgent' && t.status !== 'completed').length,
+      UPT: tasks.filter(t => t.unpaidAmount > 0).length
     },
     mobileBalances,
     bankBalances,
@@ -692,7 +693,11 @@ function App() {
           createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
           updatedByName: typeof t.updatedBy === 'object' ? (t.updatedBy?.username || t.updatedBy?.email || '') : ''
         };
-        setTasks(prev => [mapped, ...prev]);
+        // Add task only if it doesn't already exist (prevent duplicates from SSE)
+        setTasks(prev => {
+          if (prev.some(x => x.id === mapped.id)) return prev;
+          return [mapped, ...prev];
+        });
         // If new customer, ensure a client exists
         if (taskData.customerType === 'new') {
           const exists = clients.some(c => c.name === taskData.customerName);
@@ -1192,13 +1197,14 @@ function App() {
       case 'completed':
         return (task: Task) => task.status === 'completed';
       case 'service-delivered':
+      case 'delivered':
         return (task: Task) => task.status === 'service-delivered';
       case 'do-now':
         return (task: Task) => task.taskType === 'do-now' && task.status !== 'completed';
       case 'urgent':
         return (task: Task) => task.taskType === 'urgent' && task.status !== 'completed';
-      case 'delivered':
-        return (task: Task) => task.status === 'service-delivered';
+      case 'unpaid':
+        return (task: Task) => task.unpaidAmount > 0;
       default:
         return undefined;
     }
