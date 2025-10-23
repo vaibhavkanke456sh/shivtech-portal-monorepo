@@ -238,6 +238,31 @@ function App() {
             newBankBalances.shopqr += adjustedAmount;
             break;
         }
+      } else if (entry.type === 'AEPS' || entry.entryType === 'AEPS') {
+        const aepsType = entry.aepsIdType || entry.aepsIdName || '';
+        const amt = parseFloat(entry.amount || '0');
+        const commissionAmt = parseFloat(entry.commissionAmount || '0');
+        if (aepsType === 'Redmil') newBankBalances.redmil += amt;
+        if (aepsType === 'Spicemoney') newBankBalances.spicemoney += amt;
+        if (aepsType === 'Airtel Payment Bank') newBankBalances.airtelpmt += amt;
+        const given = entry.givenToCustomer || '';
+        if (given === 'Online') {
+          const tf = entry.transferredFrom || '';
+          if (tf === 'Vaibhav') newBankBalances.vaibhav -= amt;
+          if (tf === 'Omkar') newBankBalances.omkar -= amt;
+          if (tf === 'Uma') newBankBalances.uma -= amt;
+        } else if (given === 'Cash from Gala') {
+          newBankBalances.cash -= amt;
+        } else if (given === 'Withdrawn from ID') {
+          if (aepsType === 'Redmil') newBankBalances.redmil -= amt;
+          if (aepsType === 'Spicemoney') newBankBalances.spicemoney -= amt;
+          if (aepsType === 'Airtel Payment Bank') newBankBalances.airtelpmt -= amt;
+        }
+        const ctype = entry.commissionType || '';
+        if (commissionAmt > 0) {
+          if (ctype === 'Cash') newBankBalances.cash += commissionAmt;
+          else if (ctype === 'Online') newBankBalances.shopqr += commissionAmt;
+        }
       } else if (entry.type === 'ADD_FUND_TRANSFER_ENTRY' || entry.entryType === 'ADD_FUND_TRANSFER_ENTRY' || entry.type === 'ADD FUND TRANSFER ENTRY' || entry.entryType === 'ADD FUND TRANSFER ENTRY') {
         console.log('🎯 Processing fund transfer entry:', entry);
         console.log('Found fund transfer entry with transferredFrom:', entry.transferredFrom, 'amount:', entry.amount);

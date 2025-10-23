@@ -406,9 +406,20 @@ router.get('/sales-entries', async (req, res) => {
         entries.push({
           _id: entry._id,
           type: 'AEPS',
+          aepsIdType: entry.aepsIdType,
           aepsIdName: entry.aepsIdName,
           amount: entry.amount,
+          givenToCustomer: entry.givenToCustomer,
+          givenToCustomerRemark: entry.givenToCustomerRemark,
+          givenToCustomerOther: entry.givenToCustomerOther,
+          withdrawnType: entry.withdrawnType,
+          paymentApplication: entry.paymentApplication,
+          transferredFrom: entry.transferredFrom,
+          transferredFromRemark: entry.transferredFromRemark,
+          commissionType: entry.commissionType,
           commissionAmount: entry.commissionAmount,
+          commissionRemark: entry.commissionRemark,
+          date: entry.date,
           timestamp: entry.createdAt,
           createdAt: entry.createdAt
         });

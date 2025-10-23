@@ -2374,9 +2374,22 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                               )}
                               {entry.type === 'AEPS' && (
                                 <div>
-                                  <div><strong>AEPS ID:</strong> {entry.aepsIdType}</div>
+                                  <div><strong>AEPS ID:</strong> {entry.aepsIdType}{entry.aepsIdType === 'Other' && entry.aepsIdName ? ` (${entry.aepsIdName})` : ''}</div>
+                                  <div><strong>Amount:</strong> ₹{entry.amount}</div>
                                   <div><strong>Given to Customer:</strong> {entry.givenToCustomer}</div>
-                                  <div><strong>Commission:</strong> {entry.commissionType}</div>
+                                  {entry.givenToCustomerRemark && <div><strong>Given Remark:</strong> {entry.givenToCustomerRemark}</div>}
+                                  {entry.givenToCustomer === 'Online' && (
+                                    <>
+                                      <div><strong>Payment Application:</strong> {entry.paymentApplication}</div>
+                                      <div><strong>Transferred From:</strong> {entry.transferredFrom}</div>
+                                      {entry.transferredFromRemark && <div><strong>Transfer Remark:</strong> {entry.transferredFromRemark}</div>}
+                                    </>
+                                  )}
+                                  {entry.givenToCustomer === 'Withdrawn from ID' && (
+                                    <div><strong>Withdrawn Details:</strong> {entry.withdrawnType}</div>
+                                  )}
+                                  <div><strong>Commission:</strong> {entry.commissionType} {entry.commissionAmount ? `- ₹${entry.commissionAmount}` : ''}</div>
+                                  {entry.commissionRemark && <div><strong>Commission Remark:</strong> {entry.commissionRemark}</div>}
                                   {entry.remarks && <div><strong>Remarks:</strong> {entry.remarks}</div>}
                                 </div>
                               )}
@@ -2573,13 +2586,30 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                   {editForm.type === 'AEPS' && (
                     <>
                       <div>
-                        <label className="block text-sm font-semibold mb-1">AEPS ID Name</label>
-                        <input
-                          value={editForm.aepsIdName || ''}
-                          onChange={(e) => setEditForm({...editForm, aepsIdName: e.target.value})}
+                        <label className="block text-sm font-semibold mb-1">AEPS ID</label>
+                        <select
+                          value={editForm.aepsIdType || ''}
+                          onChange={(e) => setEditForm({...editForm, aepsIdType: e.target.value})}
                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                        />
+                        >
+                          <option value="">Select</option>
+                          <option value="Redmil">Redmil</option>
+                          <option value="Spicemoney">Spicemoney</option>
+                          <option value="Airtel Payment Bank">Airtel Payment Bank</option>
+                          <option value="Other">Other</option>
+                        </select>
                       </div>
+                      {editForm.aepsIdType === 'Other' && (
+                        <div>
+                          <label className="block text-sm font-semibold mb-1">Other ID Name</label>
+                          <input
+                            value={editForm.aepsIdName || ''}
+                            onChange={(e) => setEditForm({...editForm, aepsIdName: e.target.value})}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                            placeholder="Enter ID Name"
+                          />
+                        </div>
+                      )}
                       <div>
                         <label className="block text-sm font-semibold mb-1">Amount</label>
                         <input
@@ -2590,12 +2620,123 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                         />
                       </div>
                       <div>
+                        <label className="block text-sm font-semibold mb-1">How Money Given Customer</label>
+                        <select
+                          value={editForm.givenToCustomer || ''}
+                          onChange={(e) => setEditForm({...editForm, givenToCustomer: e.target.value})}
+                          className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        >
+                          <option value="">Select</option>
+                          <option value="Online">Online</option>
+                          <option value="Cash from Gala">Cash from Gala</option>
+                          <option value="Other">Other</option>
+                          <option value="Withdrawn from ID">Withdrawn from ID and Given to Customer</option>
+                        </select>
+                      </div>
+                      {editForm.givenToCustomer === 'Online' && (
+                        <>
+                          <div>
+                            <label className="block text-sm font-semibold mb-1">Online Remark</label>
+                            <input
+                              value={editForm.givenToCustomerRemark || ''}
+                              onChange={(e) => setEditForm({...editForm, givenToCustomerRemark: e.target.value})}
+                              className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                              placeholder="Enter Remark"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold mb-1">Payment Application</label>
+                            <select
+                              value={editForm.paymentApplication || ''}
+                              onChange={(e) => setEditForm({...editForm, paymentApplication: e.target.value})}
+                              className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                            >
+                              <option value="">Select</option>
+                              <option value="PhonePe">PhonePe</option>
+                              <option value="Paytm">Paytm</option>
+                              <option value="Google Pay">Google Pay</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold mb-1">Transferred From</label>
+                            <select
+                              value={editForm.transferredFrom || ''}
+                              onChange={(e) => setEditForm({...editForm, transferredFrom: e.target.value})}
+                              className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                            >
+                              <option value="">Select</option>
+                              <option value="Vaibhav">Vaibhav</option>
+                              <option value="Omkar">Omkar</option>
+                              <option value="Uma">Uma</option>
+                              <option value="Vaishnavi">Vaishnavi</option>
+                              <option value="Shop Accounts">Shop Accounts</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          </div>
+                          {editForm.transferredFrom === 'Other' && (
+                            <div>
+                              <label className="block text-sm font-semibold mb-1">Other Remark</label>
+                              <input
+                                value={editForm.transferredFromRemark || ''}
+                                onChange={(e) => setEditForm({...editForm, transferredFromRemark: e.target.value})}
+                                className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                placeholder="Enter Remark"
+                              />
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {editForm.givenToCustomer === 'Other' && (
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-semibold mb-1">Other Details</label>
+                          <input
+                            value={editForm.givenToCustomerOther || ''}
+                            onChange={(e) => setEditForm({...editForm, givenToCustomerOther: e.target.value})}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                            placeholder="Enter Details"
+                          />
+                        </div>
+                      )}
+                      {editForm.givenToCustomer === 'Withdrawn from ID' && (
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-semibold mb-1">Withdrawn from ID and Given to Customer</label>
+                          <input
+                            value={editForm.withdrawnType || ''}
+                            onChange={(e) => setEditForm({...editForm, withdrawnType: e.target.value})}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                            placeholder="Enter Details (optional)"
+                          />
+                        </div>
+                      )}
+                      <div>
+                        <label className="block text-sm font-semibold mb-1">Commission</label>
+                        <select
+                          value={editForm.commissionType || ''}
+                          onChange={(e) => setEditForm({...editForm, commissionType: e.target.value})}
+                          className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        >
+                          <option value="">Select</option>
+                          <option value="Cash">Cash</option>
+                          <option value="Online">Online</option>
+                        </select>
+                      </div>
+                      <div>
                         <label className="block text-sm font-semibold mb-1">Commission Amount</label>
                         <input
                           type="number"
                           value={editForm.commissionAmount || ''}
                           onChange={(e) => setEditForm({...editForm, commissionAmount: e.target.value})}
                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          placeholder="Enter Commission Amount"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold mb-1">Commission Remark</label>
+                        <input
+                          value={editForm.commissionRemark || ''}
+                          onChange={(e) => setEditForm({...editForm, commissionRemark: e.target.value})}
+                          className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          placeholder="Enter Remark (optional)"
                         />
                       </div>
                     </>
