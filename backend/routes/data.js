@@ -473,12 +473,15 @@ router.get('/sales-entries', async (req, res) => {
           moneyDistributionType: entry.moneyDistributionType,
           // Single person scenario fields
           howMoneyGivenSingle: entry.howMoneyGivenSingle,
+          howMoneyGivenSingleRemark: entry.howMoneyGivenSingleRemark,
           howMoneyGivenSinglePersonName: entry.howMoneyGivenSinglePersonName,
           // Two persons scenario fields
           firstPartMoneyGiven: entry.firstPartMoneyGiven,
+          firstPartMoneyGivenRemark: entry.firstPartMoneyGivenRemark,
           firstPartMoneyGivenPersonName: entry.firstPartMoneyGivenPersonName,
           firstPartAmount: entry.firstPartAmount,
           remainingPartMoneyGiven: entry.remainingPartMoneyGiven,
+          remainingPartMoneyGivenRemark: entry.remainingPartMoneyGivenRemark,
           remainingPartMoneyGivenPersonName: entry.remainingPartMoneyGivenPersonName,
           remainingPartAmount: entry.remainingPartAmount,
           // Additional fields
@@ -551,6 +554,7 @@ router.post('/sales-entries', async (req, res) => {
       processedData.cashGiven = parseFloat(processedData.cashGiven || '0');
       processedData.firstPartAmount = parseFloat(processedData.firstPartAmount || '0');
       processedData.remainingPartAmount = parseFloat(processedData.remainingPartAmount || '0');
+      processedData.commissionAmount = parseFloat(processedData.commissionAmount || '0');
     }
     
     const payload = { ...processedData, owner: req.user._id };

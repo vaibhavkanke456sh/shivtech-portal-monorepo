@@ -53,9 +53,8 @@ const onlineReceivedCashGivenSchema = new mongoose.Schema(
     // Commission details
     commissionType: {
       type: String,
-      enum: ['No Commission', 'Cash Commission', 'Online Commission'],
-      trim: true,
-      default: 'No Commission'
+      enum: ['Cash', 'Shop QR'],
+      trim: true
     },
     commissionAmount: {
       type: Number,
@@ -79,8 +78,13 @@ const onlineReceivedCashGivenSchema = new mongoose.Schema(
     // Single person scenario fields
     howMoneyGivenSingle: {
       type: String,
-      enum: ['Cash from Gala', 'Vaibhav', 'Omkar', 'Uma', 'Vaishnavi', 'Cash Given to Customer by Person'],
+      enum: ['Cash from Gala', 'Other', 'Withdrawn from ATM and Given to Customer', 'Vaibhav', 'Omkar', 'Uma', 'Vaishnavi', 'Cash Given to Customer by Person'],
       trim: true
+    },
+    howMoneyGivenSingleRemark: {
+      type: String,
+      trim: true,
+      default: ''
     },
     howMoneyGivenSinglePersonName: {
       type: String,
@@ -91,8 +95,13 @@ const onlineReceivedCashGivenSchema = new mongoose.Schema(
     // Two persons scenario fields
     firstPartMoneyGiven: {
       type: String,
-      enum: ['Cash from Gala', 'Vaibhav', 'Omkar', 'Uma', 'Vaishnavi', 'Cash Given to Customer by Person'],
+      enum: ['Cash from Gala', 'Other', 'Withdrawn from ATM and Given to Customer', 'Vaibhav', 'Omkar', 'Uma', 'Vaishnavi', 'Cash Given to Customer by Person'],
       trim: true
+    },
+    firstPartMoneyGivenRemark: {
+      type: String,
+      trim: true,
+      default: ''
     },
     firstPartMoneyGivenPersonName: {
       type: String,
@@ -106,8 +115,13 @@ const onlineReceivedCashGivenSchema = new mongoose.Schema(
     
     remainingPartMoneyGiven: {
       type: String,
-      enum: ['Cash from Gala', 'Vaibhav', 'Omkar', 'Uma', 'Vaishnavi', 'Cash Given to Customer by Person'],
+      enum: ['Cash from Gala', 'Other', 'Withdrawn from ATM and Given to Customer', 'Vaibhav', 'Omkar', 'Uma', 'Vaishnavi', 'Cash Given to Customer by Person'],
       trim: true
+    },
+    remainingPartMoneyGivenRemark: {
+      type: String,
+      trim: true,
+      default: ''
     },
     remainingPartMoneyGivenPersonName: {
       type: String,

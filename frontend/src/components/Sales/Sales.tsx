@@ -121,7 +121,7 @@ const defaultFundTransferForm: FundTransferForm = {
   cashReceived: 'Yes',
   addedInGala: 'Yes',
   addedInGalaRemark: '',
-  commissionType: 'No Commission',
+  commissionType: '',
   commissionAmount: '',
   commissionRemark: '',
 };
@@ -146,7 +146,7 @@ const defaultOnlineReceivedCashGivenForm: OnlineReceivedCashGivenForm = {
   remainingPartMoneyGivenRemark: '',
   remainingPartMoneyGivenPersonName: '',
   remainingPartAmount: '',
-  commissionType: 'No Commission',
+  commissionType: '',
   commissionAmount: '',
   commissionRemark: '',
   remarks: '',
@@ -718,6 +718,9 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
       if (onlineReceivedCashGivenForm.moneyDistributionType === 'Full Amount given by One Person') {
         // Single person scenario - always include these fields
         backendData.howMoneyGivenSingle = onlineReceivedCashGivenForm.howMoneyGivenSingle;
+        if (onlineReceivedCashGivenForm.howMoneyGivenSingleRemark && onlineReceivedCashGivenForm.howMoneyGivenSingleRemark.trim() !== '') {
+          backendData.howMoneyGivenSingleRemark = onlineReceivedCashGivenForm.howMoneyGivenSingleRemark;
+        }
         if (onlineReceivedCashGivenForm.howMoneyGivenSinglePersonName && onlineReceivedCashGivenForm.howMoneyGivenSinglePersonName.trim() !== '') {
           backendData.howMoneyGivenSinglePersonName = onlineReceivedCashGivenForm.howMoneyGivenSinglePersonName;
         }
@@ -726,11 +729,17 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
         backendData.firstPartMoneyGiven = onlineReceivedCashGivenForm.firstPartMoneyGiven;
         backendData.remainingPartMoneyGiven = onlineReceivedCashGivenForm.remainingPartMoneyGiven;
         
+        if (onlineReceivedCashGivenForm.firstPartMoneyGivenRemark && onlineReceivedCashGivenForm.firstPartMoneyGivenRemark.trim() !== '') {
+          backendData.firstPartMoneyGivenRemark = onlineReceivedCashGivenForm.firstPartMoneyGivenRemark;
+        }
         if (onlineReceivedCashGivenForm.firstPartMoneyGivenPersonName && onlineReceivedCashGivenForm.firstPartMoneyGivenPersonName.trim() !== '') {
           backendData.firstPartMoneyGivenPersonName = onlineReceivedCashGivenForm.firstPartMoneyGivenPersonName;
         }
         if (onlineReceivedCashGivenForm.firstPartAmount && onlineReceivedCashGivenForm.firstPartAmount.trim() !== '') {
           backendData.firstPartAmount = parseFloat(onlineReceivedCashGivenForm.firstPartAmount);
+        }
+        if (onlineReceivedCashGivenForm.remainingPartMoneyGivenRemark && onlineReceivedCashGivenForm.remainingPartMoneyGivenRemark.trim() !== '') {
+          backendData.remainingPartMoneyGivenRemark = onlineReceivedCashGivenForm.remainingPartMoneyGivenRemark;
         }
         if (onlineReceivedCashGivenForm.remainingPartMoneyGivenPersonName && onlineReceivedCashGivenForm.remainingPartMoneyGivenPersonName.trim() !== '') {
           backendData.remainingPartMoneyGivenPersonName = onlineReceivedCashGivenForm.remainingPartMoneyGivenPersonName;
@@ -1153,6 +1162,15 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
         const backendType = mapEntryTypeForAPI(entry.type);
         const payload = editForm.type === 'ADD FUND TRANSFER ENTRY'
           ? { ...editForm, amount: parseFloat((editForm as any).amount || '0'), commissionAmount: parseFloat((editForm as any).commissionAmount || '0') }
+          : editForm.type === 'ONLINE_RECEIVED_CASH_GIVEN'
+          ? {
+              ...editForm,
+              receivedOnlineAmount: parseFloat((editForm as any).receivedOnlineAmount || '0'),
+              cashGiven: parseFloat((editForm as any).cashGiven || '0'),
+              firstPartAmount: parseFloat((editForm as any).firstPartAmount || '0'),
+              remainingPartAmount: parseFloat((editForm as any).remainingPartAmount || '0'),
+              commissionAmount: parseFloat((editForm as any).commissionAmount || '0')
+            }
           : editForm;
         const response = await apiFetch(`/api/data/sales-entries/${encodeURIComponent(backendType)}/${entry._id}`, {
           method: 'PUT',
@@ -1926,8 +1944,8 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                          <div>
                            <label className="block text-sm font-semibold mb-1">Enter Person Name</label>
                            <input
-                             name="personName"
-                             value={onlineReceivedCashGivenForm.personName}
+                             name="howMoneyGivenSinglePersonName"
+                             value={onlineReceivedCashGivenForm.howMoneyGivenSinglePersonName}
                              onChange={handleOnlineReceivedCashGivenChange}
                              className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                              placeholder="Enter person name"
@@ -1942,19 +1960,18 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                          <h3 className="text-lg font-semibold mb-4 text-blue-600">Commission Section</h3>
                        </div>
                        
-                       {/* Commission Type */}
+                       {/* Commission Credited To */}
                        <div>
-                         <label className="block text-sm font-semibold mb-1">Commission Type</label>
+                         <label className="block text-sm font-semibold mb-1">Commission Credited To</label>
                          <select
                            name="commissionType"
                            value={onlineReceivedCashGivenForm.commissionType}
                            onChange={handleOnlineReceivedCashGivenChange}
                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                           required
                          >
-                           <option value="No Commission">No Commission</option>
-                           <option value="Fixed">Fixed</option>
-                           <option value="Percentage">Percentage</option>
+                           <option value="">Select</option>
+                           <option value="Cash">Cash</option>
+                           <option value="Shop QR">Shop QR</option>
                          </select>
                        </div>
                        
@@ -2415,19 +2432,26 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                                   <div><strong>Sender:</strong> {entry.senderName} ({entry.senderNumber})</div>
                                   <div><strong>Received On:</strong> {entry.receivedOnApplication}</div>
                                   <div><strong>Account Holder:</strong> {entry.accountHolder}</div>
+                                  {entry.accountHolderRemark && <div><strong>Account Holder Remark:</strong> {entry.accountHolderRemark}</div>}
                                   <div><strong>Online Amount:</strong> ₹{entry.receivedOnlineAmount}</div>
                                   <div><strong>Cash Given:</strong> ₹{entry.cashGiven}</div>
                                   <div><strong>Distribution:</strong> {entry.moneyDistributionType}</div>
                                   {entry.moneyDistributionType === 'Full Amount given by One Person' && (
-                                    <div><strong>Money Given:</strong> {entry.howMoneyGivenSingle} {entry.howMoneyGivenSinglePersonName && `(${entry.howMoneyGivenSinglePersonName})`}</div>
+                                    <>
+                                      <div><strong>Money Given:</strong> {entry.howMoneyGivenSingle} {entry.howMoneyGivenSinglePersonName && `(${entry.howMoneyGivenSinglePersonName})`}</div>
+                                      {entry.howMoneyGivenSingleRemark && <div><strong>Money Given Remark:</strong> {entry.howMoneyGivenSingleRemark}</div>}
+                                    </>
                                   )}
-                                  {entry.moneyDistributionType === 'Amount given by Two Person' && (
+                                  {entry.moneyDistributionType === 'Full Amount given by Two Persons' && (
                                     <div>
                                       <div><strong>First Part:</strong> {entry.firstPartMoneyGiven} - ₹{entry.firstPartAmount} {entry.firstPartMoneyGivenPersonName && `(${entry.firstPartMoneyGivenPersonName})`}</div>
+                                      {entry.firstPartMoneyGivenRemark && <div><strong>First Part Remark:</strong> {entry.firstPartMoneyGivenRemark}</div>}
                                       <div><strong>Remaining Part:</strong> {entry.remainingPartMoneyGiven} - ₹{entry.remainingPartAmount} {entry.remainingPartMoneyGivenPersonName && `(${entry.remainingPartMoneyGivenPersonName})`}</div>
+                                      {entry.remainingPartMoneyGivenRemark && <div><strong>Remaining Part Remark:</strong> {entry.remainingPartMoneyGivenRemark}</div>}
                                     </div>
                                   )}
-                                  {entry.commissionType !== 'No Commission' && <div><strong>Commission:</strong> {entry.commissionType} - ₹{entry.commissionAmount}</div>}
+                                  <div><strong>Commission:</strong> {entry.commissionType || 'N/A'} {entry.commissionAmount ? `- ₹${entry.commissionAmount}` : ''}</div>
+                                  {entry.commissionRemark && <div><strong>Commission Remark:</strong> {entry.commissionRemark}</div>}
                                   {entry.remarks && <div><strong>Remarks:</strong> {entry.remarks}</div>}
                                 </div>
                               )}
@@ -2744,6 +2768,244 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                           placeholder="Enter Remark (optional)"
                         />
+                      </div>
+                    </>
+                  )}
+
+                  {editForm.type === 'ONLINE_RECEIVED_CASH_GIVEN' && (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-semibold mb-1">Sender Name</label>
+                          <input
+                            value={editForm.senderName || ''}
+                            onChange={(e) => setEditForm({ ...editForm, senderName: e.target.value })}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold mb-1">Sender Number</label>
+                          <input
+                            value={editForm.senderNumber || ''}
+                            onChange={(e) => setEditForm({ ...editForm, senderNumber: e.target.value })}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold mb-1">Received On Application</label>
+                          <select
+                            value={editForm.receivedOnApplication || ''}
+                            onChange={(e) => setEditForm({ ...editForm, receivedOnApplication: e.target.value })}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          >
+                            <option value="Shop QR">Shop QR</option>
+                            <option value="PhonePe">PhonePe</option>
+                            <option value="Paytm">Paytm</option>
+                            <option value="Google Pay">Google Pay</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold mb-1">Account Holder</label>
+                          <select
+                            value={editForm.accountHolder || ''}
+                            onChange={(e) => setEditForm({ ...editForm, accountHolder: e.target.value })}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          >
+                            <option value="Shop">Shop</option>
+                            <option value="Vaibhav">Vaibhav</option>
+                            <option value="Omkar">Omkar</option>
+                            <option value="Uma">Uma</option>
+                            <option value="Vaishnavi">Vaishnavi</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-semibold mb-1">Account Holder Remark</label>
+                          <input
+                            value={editForm.accountHolderRemark || ''}
+                            onChange={(e) => setEditForm({ ...editForm, accountHolderRemark: e.target.value })}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold mb-1">Received Online Amount</label>
+                          <input
+                            type="number"
+                            value={editForm.receivedOnlineAmount || ''}
+                            onChange={(e) => setEditForm({ ...editForm, receivedOnlineAmount: e.target.value })}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold mb-1">Cash Given</label>
+                          <input
+                            type="number"
+                            value={editForm.cashGiven || ''}
+                            onChange={(e) => setEditForm({ ...editForm, cashGiven: e.target.value })}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-semibold mb-1">How was the money given?</label>
+                          <select
+                            value={editForm.moneyDistributionType || ''}
+                            onChange={(e) => setEditForm({ ...editForm, moneyDistributionType: e.target.value })}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          >
+                            <option value="Full Amount given by One Person">Full Amount given by One Person</option>
+                            <option value="Full Amount given by Two Persons">Full Amount given by Two Persons</option>
+                          </select>
+                        </div>
+
+                        {editForm.moneyDistributionType === 'Full Amount given by One Person' && (
+                          <>
+                            <div>
+                              <label className="block text-sm font-semibold mb-1">How Money Given to Customer</label>
+                              <select
+                                value={editForm.howMoneyGivenSingle || ''}
+                                onChange={(e) => setEditForm({ ...editForm, howMoneyGivenSingle: e.target.value })}
+                                className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                              >
+                                <option value="Cash from Gala">Cash from Gala</option>
+                                <option value="Other">Other</option>
+                                <option value="Withdrawn from ATM and Given to Customer">Withdrawn from ATM and Given to Customer</option>
+                                <option value="Vaibhav">Vaibhav</option>
+                                <option value="Omkar">Omkar</option>
+                                <option value="Uma">Uma</option>
+                                <option value="Vaishnavi">Vaishnavi</option>
+                                <option value="Cash Given to Customer by Person">Cash Given to Customer by Person</option>
+                              </select>
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-sm font-semibold mb-1">Money Given Remark</label>
+                              <input
+                                value={editForm.howMoneyGivenSingleRemark || ''}
+                                onChange={(e) => setEditForm({ ...editForm, howMoneyGivenSingleRemark: e.target.value })}
+                                className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                              />
+                            </div>
+                            {editForm.howMoneyGivenSingle === 'Cash Given to Customer by Person' && (
+                              <div>
+                                <label className="block text-sm font-semibold mb-1">Enter Person Name</label>
+                                <input
+                                  value={editForm.howMoneyGivenSinglePersonName || ''}
+                                  onChange={(e) => setEditForm({ ...editForm, howMoneyGivenSinglePersonName: e.target.value })}
+                                  className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                  placeholder="Enter person name"
+                                />
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        {editForm.moneyDistributionType === 'Full Amount given by Two Persons' && (
+                          <>
+                            <div>
+                              <label className="block text-sm font-semibold mb-1">(A) First part of money given</label>
+                              <select
+                                value={editForm.firstPartMoneyGiven || ''}
+                                onChange={(e) => setEditForm({ ...editForm, firstPartMoneyGiven: e.target.value })}
+                                className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                              >
+                                <option value="Cash from Gala">Cash from Gala</option>
+                                <option value="Other">Other</option>
+                                <option value="Withdrawn from ATM and Given to Customer">Withdrawn from ATM and Given to Customer</option>
+                                <option value="Vaibhav">Vaibhav</option>
+                                <option value="Omkar">Omkar</option>
+                                <option value="Uma">Uma</option>
+                                <option value="Vaishnavi">Vaishnavi</option>
+                                <option value="Cash Given to Customer by Person">Cash Given to Customer by Person</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold mb-1">First Part Remark</label>
+                              <input
+                                value={editForm.firstPartMoneyGivenRemark || ''}
+                                onChange={(e) => setEditForm({ ...editForm, firstPartMoneyGivenRemark: e.target.value })}
+                                className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold mb-1">First Part Amount</label>
+                              <input
+                                type="number"
+                                value={editForm.firstPartAmount || ''}
+                                onChange={(e) => setEditForm({ ...editForm, firstPartAmount: e.target.value })}
+                                className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold mb-1">(B) Remaining part of money given</label>
+                              <select
+                                value={editForm.remainingPartMoneyGiven || ''}
+                                onChange={(e) => setEditForm({ ...editForm, remainingPartMoneyGiven: e.target.value })}
+                                className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                              >
+                                <option value="Cash from Gala">Cash from Gala</option>
+                                <option value="Other">Other</option>
+                                <option value="Withdrawn from ATM and Given to Customer">Withdrawn from ATM and Given to Customer</option>
+                                <option value="Vaibhav">Vaibhav</option>
+                                <option value="Omkar">Omkar</option>
+                                <option value="Uma">Uma</option>
+                                <option value="Cash Given to Customer by Person">Cash Given to Customer by Person</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold mb-1">Remaining Part Remark</label>
+                              <input
+                                value={editForm.remainingPartMoneyGivenRemark || ''}
+                                onChange={(e) => setEditForm({ ...editForm, remainingPartMoneyGivenRemark: e.target.value })}
+                                className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold mb-1">Remaining Part Amount</label>
+                              <input
+                                type="number"
+                                value={editForm.remainingPartAmount || ''}
+                                onChange={(e) => setEditForm({ ...editForm, remainingPartAmount: e.target.value })}
+                                className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                              />
+                            </div>
+                          </>
+                        )}
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-semibold mb-1">General Remarks</label>
+                          <input
+                            value={editForm.remarks || ''}
+                            onChange={(e) => setEditForm({ ...editForm, remarks: e.target.value })}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold mb-1">Commission Credited To</label>
+                          <select
+                            value={editForm.commissionType || ''}
+                            onChange={(e) => setEditForm({ ...editForm, commissionType: e.target.value })}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          >
+                            <option value="">Select</option>
+                            <option value="Cash">Cash</option>
+                            <option value="Shop QR">Shop QR</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold mb-1">Commission Amount</label>
+                          <input
+                            type="number"
+                            value={editForm.commissionAmount || ''}
+                            onChange={(e) => setEditForm({ ...editForm, commissionAmount: e.target.value })}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold mb-1">Commission Remark</label>
+                          <input
+                            value={editForm.commissionRemark || ''}
+                            onChange={(e) => setEditForm({ ...editForm, commissionRemark: e.target.value })}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          />
+                        </div>
                       </div>
                     </>
                   )}

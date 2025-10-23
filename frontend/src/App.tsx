@@ -182,6 +182,7 @@ function App() {
       vaibhav: 0,
       omkar: 0,
       uma: 0,
+      vaishnavi: 0,
       shopqr: 0
     };
 
@@ -319,6 +320,9 @@ function App() {
             case 'Uma':
               newBankBalances.uma += receivedOnlineAmount;
               break;
+            case 'Vaishnavi':
+              newBankBalances.vaishnavi += receivedOnlineAmount;
+              break;
             case 'Shop':
               newBankBalances.shopqr += receivedOnlineAmount;
               break;
@@ -432,6 +436,13 @@ function App() {
               }
             }
           }
+        }
+        // Commission credited to Cash or Shop QR
+        const commissionAmt = parseFloat(entry.commissionAmount || '0');
+        const commissionTo = entry.commissionType || '';
+        if (commissionAmt > 0) {
+          if (commissionTo === 'Cash') newBankBalances.cash += commissionAmt;
+          else if (commissionTo === 'Shop QR' || commissionTo === 'Online') newBankBalances.shopqr += commissionAmt;
         }
       }
     });
