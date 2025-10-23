@@ -1151,10 +1151,13 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
         const headers: any = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
         const backendType = mapEntryTypeForAPI(entry.type);
+        const payload = editForm.type === 'ADD FUND TRANSFER ENTRY'
+          ? { ...editForm, amount: parseFloat((editForm as any).amount || '0'), commissionAmount: parseFloat((editForm as any).commissionAmount || '0') }
+          : editForm;
         const response = await apiFetch(`/api/data/sales-entries/${encodeURIComponent(backendType)}/${entry._id}`, {
           method: 'PUT',
           headers,
-          body: JSON.stringify(editForm)
+          body: JSON.stringify(payload)
         });
         const data = await response.json();
         
@@ -2395,13 +2398,16 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                               )}
                               {entry.type === 'ADD FUND TRANSFER ENTRY' && (
                                 <div>
-                                  <div><strong>Customer:</strong> {entry.customerName}</div>
-                                  <div><strong>Beneficiary:</strong> {entry.beneficiaryName}</div>
+                                  <div><strong>Customer:</strong> {entry.customerName} {entry.customerNumber ? `(${entry.customerNumber})` : ''}</div>
+                                  <div><strong>Beneficiary:</strong> {entry.beneficiaryName} {entry.beneficiaryNumber ? `(${entry.beneficiaryNumber})` : ''}</div>
                                   <div><strong>Application:</strong> {entry.applicationName}</div>
+                                  <div><strong>Transferred From:</strong> {entry.transferredFrom}</div>
                                   {entry.transferredFromRemark && <div><strong>Transfer Remark:</strong> {entry.transferredFromRemark}</div>}
+                                  <div><strong>Cash Received:</strong> {entry.cashReceived}</div>
+                                  <div><strong>Added In Gala:</strong> {entry.addedInGala}</div>
                                   {entry.addedInGalaRemark && <div><strong>Gala Remark:</strong> {entry.addedInGalaRemark}</div>}
+                                  <div><strong>Commission:</strong> {entry.commissionType} {entry.commissionAmount ? `- ₹${entry.commissionAmount}` : ''}</div>
                                   {entry.commissionRemark && <div><strong>Commission Remark:</strong> {entry.commissionRemark}</div>}
-                                  {entry.remarks && <div><strong>Remarks:</strong> {entry.remarks}</div>}
                                 </div>
                               )}
                               {entry.type === 'ONLINE_RECEIVED_CASH_GIVEN' && (
@@ -2753,6 +2759,14 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                         />
                       </div>
                       <div>
+                        <label className="block text-sm font-semibold mb-1">Customer Number</label>
+                        <input
+                          value={editForm.customerNumber || ''}
+                          onChange={(e) => setEditForm({...editForm, customerNumber: e.target.value})}
+                          className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </div>
+                      <div>
                         <label className="block text-sm font-semibold mb-1">Beneficiary Name</label>
                         <input
                           value={editForm.beneficiaryName || ''}
@@ -2760,6 +2774,53 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
+                      <div>
+                        <label className="block text-sm font-semibold mb-1">Beneficiary Number</label>
+                        <input
+                          value={editForm.beneficiaryNumber || ''}
+                          onChange={(e) => setEditForm({...editForm, beneficiaryNumber: e.target.value})}
+                          className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold mb-1">Application Name</label>
+                        <select
+                          value={editForm.applicationName || ''}
+                          onChange={(e) => setEditForm({...editForm, applicationName: e.target.value})}
+                          className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        >
+                          <option value="PhonePe">PhonePe</option>
+                          <option value="Paytm">Paytm</option>
+                          <option value="Google Pay">Google Pay</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold mb-1">Transferred From</label>
+                        <select
+                          value={editForm.transferredFrom || ''}
+                          onChange={(e) => setEditForm({...editForm, transferredFrom: e.target.value})}
+                          className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        >
+                          <option value="Vaibhav">Vaibhav</option>
+                          <option value="Omkar">Omkar</option>
+                          <option value="Uma">Uma</option>
+                          <option value="Vaishnavi">Vaishnavi</option>
+                          <option value="Shop Accounts">Shop Accounts</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                      {editForm.transferredFrom === 'Other' && (
+                        <div>
+                          <label className="block text-sm font-semibold mb-1">Transfer Remark</label>
+                          <input
+                            value={editForm.transferredFromRemark || ''}
+                            onChange={(e) => setEditForm({...editForm, transferredFromRemark: e.target.value})}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                            placeholder="Enter Remark"
+                          />
+                        </div>
+                      )}
                       <div>
                         <label className="block text-sm font-semibold mb-1">Amount</label>
                         <input
@@ -2770,10 +2831,63 @@ const Sales: React.FC<SalesProps> = ({ token, onAepsBalanceUpdate, onFundTransfe
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold mb-1">Application Name</label>
+                        <label className="block text-sm font-semibold mb-1">Cash Received</label>
+                        <select
+                          value={editForm.cashReceived || ''}
+                          onChange={(e) => setEditForm({...editForm, cashReceived: e.target.value})}
+                          className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        >
+                          <option value="Yes">Yes</option>
+                          <option value="No">No</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold mb-1">Added In Gala</label>
+                        <select
+                          value={editForm.addedInGala || ''}
+                          onChange={(e) => setEditForm({...editForm, addedInGala: e.target.value})}
+                          className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        >
+                          <option value="Yes">Yes</option>
+                          <option value="No">No</option>
+                        </select>
+                      </div>
+                      {editForm.addedInGala === 'Yes' && (
+                        <div>
+                          <label className="block text-sm font-semibold mb-1">Gala Remark</label>
+                          <input
+                            value={editForm.addedInGalaRemark || ''}
+                            onChange={(e) => setEditForm({...editForm, addedInGalaRemark: e.target.value})}
+                            className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                            placeholder="Enter Remark"
+                          />
+                        </div>
+                      )}
+                      <div>
+                        <label className="block text-sm font-semibold mb-1">Commission Type</label>
+                        <select
+                          value={editForm.commissionType || ''}
+                          onChange={(e) => setEditForm({...editForm, commissionType: e.target.value})}
+                          className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        >
+                          <option value="Online">Online</option>
+                          <option value="Cash">Cash</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold mb-1">Commission Amount</label>
                         <input
-                          value={editForm.applicationName || ''}
-                          onChange={(e) => setEditForm({...editForm, applicationName: e.target.value})}
+                          type="number"
+                          value={editForm.commissionAmount || ''}
+                          onChange={(e) => setEditForm({...editForm, commissionAmount: e.target.value})}
+                          className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold mb-1">Commission Remark</label>
+                        <input
+                          value={editForm.commissionRemark || ''}
+                          onChange={(e) => setEditForm({...editForm, commissionRemark: e.target.value})}
                           className="w-full border-2 border-blue-200 rounded-lg px-3 py-2 bg-blue-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
