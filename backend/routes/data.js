@@ -119,6 +119,18 @@ router.post('/tasks', async (req, res) => {
   payload.updatedBy = req.user?._id;
   if (payload.status === 'completed' && !payload.completedAt) payload.completedAt = new Date();
   if (payload.status !== 'completed') payload.completedAt = null;
+  
+  // If initial payment was made, add it to payment history
+  if (payload.amountCollected > 0) {
+    payload.paymentHistory = [{
+      amount: payload.amountCollected,
+      paymentMode: payload.paymentMode || 'cash',
+      paymentRemarks: payload.paymentRemarks || '',
+      paidAt: new Date(),
+      isInitialPayment: true
+    }];
+  }
+  
   const task = await Task.create(payload);
   const populated = await Task.findById(task._id).populate('createdBy', 'username email').populate('updatedBy', 'username email');
   // Broadcast create
@@ -165,6 +177,81 @@ router.put('/tasks/:id/restore', async (req, res) => {
   // Broadcast restore as an update so clients refresh lists
   broadcastTaskEvent('task_restored', { task });
   res.json({ success: true, data: { task } });
+});
+
+// Add remaining payment to a task
+router.put('/tasks/:id/add-payment', async (req, res) => {
+  try {
+    const { receivedAmount, paymentMode, paymentRemarks } = req.body;
+    
+    // Validation
+    if (!receivedAmount || receivedAmount <= 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Received amount must be greater than 0' 
+      });
+    }
+
+    // Get the current task
+    const currentTask = await Task.findById(req.params.id);
+    if (!currentTask) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Task not found' 
+      });
+    }
+
+    // Validate received amount doesn't exceed unpaid amount
+    if (receivedAmount > currentTask.unpaidAmount) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Received amount cannot be more than unpaid amount (${currentTask.unpaidAmount})` 
+      });
+    }
+
+    // Calculate new amounts
+    const newAmountCollected = currentTask.amountCollected + receivedAmount;
+    const newUnpaidAmount = Math.max(currentTask.finalCharges - newAmountCollected, 0);
+
+    // Add new payment to payment history
+    const newPayment = {
+      amount: receivedAmount,
+      paymentMode: paymentMode || 'cash',
+      paymentRemarks: paymentRemarks || '',
+      paidAt: new Date(),
+      isInitialPayment: false
+    };
+
+    // Prepare update data
+    const updates = {
+      amountCollected: newAmountCollected,
+      unpaidAmount: newUnpaidAmount,
+      updatedBy: req.user?._id,
+      $push: { paymentHistory: newPayment }
+    };
+
+    // Update the task
+    const task = await Task.findOneAndUpdate(
+      { _id: req.params.id },
+      updates,
+      { new: true }
+    ).populate('createdBy', 'username email').populate('updatedBy', 'username email');
+
+    // Broadcast update
+    broadcastTaskEvent('task_payment_added', { task });
+    
+    res.json({ 
+      success: true, 
+      data: { task },
+      message: `Payment of ${receivedAmount} added successfully. ${newUnpaidAmount > 0 ? `Remaining unpaid: ${newUnpaidAmount}` : 'Task is now fully paid!'}`
+    });
+  } catch (error) {
+    console.error('Error adding payment:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error' 
+    });
+  }
 });
 
 // Fund Transfers

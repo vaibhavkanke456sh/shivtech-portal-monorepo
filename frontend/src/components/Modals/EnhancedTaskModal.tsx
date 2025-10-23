@@ -181,7 +181,6 @@ const EnhancedTaskModal: React.FC<EnhancedTaskModalProps> = ({
       ...formData,
       serviceDeliveryDate: formData.serviceDeliveryDate || undefined,
       assignedTo: formData.assignedTo || undefined,
-      paymentRemarks: formData.paymentMode === 'other' ? formData.paymentRemarks : undefined,
       documentDetails: formData.documentDetails || undefined,
       uploadedDocuments: formData.uploadedDocuments.length > 0 ? formData.uploadedDocuments : undefined,
       remarks: formData.remarks || undefined,
@@ -476,26 +475,9 @@ const EnhancedTaskModal: React.FC<EnhancedTaskModalProps> = ({
               >
                 <option value="cash">Cash</option>
                 <option value="shop-qr">Shop QR</option>
-                <option value="personal-qr">Personal QR</option>
-                <option value="other">Other</option>
+                <option value="personal-qr">Personal QR (Vaibhav)</option>
               </select>
             </div>
-
-            {/* Payment Remarks (only if Other is selected) */}
-            {formData.paymentMode === 'other' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Payment Remarks
-                </label>
-                <input
-                  type="text"
-                  value={formData.paymentRemarks}
-                  onChange={(e) => setFormData(prev => ({ ...prev, paymentRemarks: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                  placeholder="Enter payment details..."
-                />
-              </div>
-            )}
 
             {/* Amount Paid */}
             <div>

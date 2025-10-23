@@ -16,6 +16,18 @@ const taskSchema = new mongoose.Schema(
     paymentRemarks: { type: String, default: '' },
     amountCollected: { type: Number, default: 0 },
     unpaidAmount: { type: Number, default: 0 },
+    paymentHistory: {
+      type: [
+        {
+          amount: Number,
+          paymentMode: { type: String, enum: ['cash', 'shop-qr', 'personal-qr', 'other'], default: 'cash' },
+          paymentRemarks: String,
+          paidAt: { type: Date, default: Date.now },
+          isInitialPayment: { type: Boolean, default: false }
+        }
+      ],
+      default: []
+    },
     documentDetails: { type: String, default: '' },
     uploadedDocuments: {
       type: [

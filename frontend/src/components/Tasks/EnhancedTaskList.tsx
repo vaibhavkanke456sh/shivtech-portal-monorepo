@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Task, Service, Employee } from '../../types';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import { Edit, UserPlus, Eye } from 'lucide-react';
+import { Edit, UserPlus, Eye, DollarSign } from 'lucide-react';
 
 interface EnhancedTaskListProps {
   tasks: Task[];
@@ -12,6 +12,7 @@ interface EnhancedTaskListProps {
   onTaskUpdate: (taskId: string, updates: Partial<Task>) => void;
   onTaskEdit: (task: Task) => void;
   onTaskDelete: (taskId: string) => void;
+  onAddPayment?: (task: Task) => void;
 }
 
 const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({ 
@@ -22,7 +23,8 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
   filter, 
   onTaskUpdate,
   onTaskEdit,
-  onTaskDelete
+  onTaskDelete,
+  onAddPayment
 }) => {
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
@@ -342,27 +344,37 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center gap-2">
-                                         <button
-                       onClick={() => onTaskEdit(task)}
-                       className="text-blue-600 hover:text-blue-800 p-1"
-                       title="Edit Task"
-                     >
-                       <Edit size={16} />
-                     </button>
-                     <button
-                       onClick={() => toggleDetails(task.id)}
-                       className="bg-red-500 text-white px-2 py-1 rounded"
-                       title={expandedTasks[task.id] ? 'Hide Details' : 'Show Details'}
-                     >
-                      <Eye size={16} />
+                    {/* Add Payment Button - only show for tasks with unpaid amount */}
+                    {task.unpaidAmount > 0 && onAddPayment && (
+                      <button
+                        onClick={() => onAddPayment(task)}
+                        className="text-emerald-600 hover:text-emerald-800 p-1"
+                        title="Add Remaining Payment"
+                      >
+                        <DollarSign size={16} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => onTaskEdit(task)}
+                      className="text-blue-600 hover:text-blue-800 p-1"
+                      title="Edit Task"
+                    >
+                      <Edit size={16} />
                     </button>
                     <button
-                      onClick={() => onTaskDelete(task.id)}
-                      className="text-red-600 hover:text-red-800"
-                      title="Delete Task"
+                      onClick={() => toggleDetails(task.id)}
+                      className="bg-red-500 text-white px-2 py-1 rounded"
+                      title={expandedTasks[task.id] ? 'Hide Details' : 'Show Details'}
                     >
-                      &#128465;
-                    </button>
+                     <Eye size={16} />
+                   </button>
+                   <button
+                     onClick={() => onTaskDelete(task.id)}
+                     className="text-red-600 hover:text-red-800"
+                     title="Delete Task"
+                   >
+                     &#128465;
+                   </button>
                   </div>
                 </td>
               </tr>
@@ -399,6 +411,44 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                       <div><span className="font-medium">Status:</span> {task.status ? task.status : <span className="text-red-500">No data</span>}</div>
                       <div><span className="font-medium">Created By:</span> {(task.createdByName || task.createdById) ? (task.createdByName || task.createdById) : <span className="text-red-500">No data</span>}</div>
                       <div><span className="font-medium">Updated By:</span> {(task.updatedByName || task.updatedById) ? (task.updatedByName || task.updatedById) : <span className="text-red-500">No data</span>}</div>
+                      
+                      {task.paymentHistory && task.paymentHistory.length > 0 && (
+                        <div className="md:col-span-2">
+                          <div className="font-medium mb-2">Payment History:</div>
+                          <div className="bg-white border border-gray-300 rounded-lg overflow-hidden">
+                            <table className="w-full">
+                              <thead className="bg-gray-100">
+                                <tr>
+                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Date</th>
+                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Type</th>
+                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Amount</th>
+                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Payment Mode</th>
+                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Remarks</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-200">
+                                {task.paymentHistory.map((payment, idx) => (
+                                  <tr key={idx} className="hover:bg-gray-50">
+                                    <td className="px-4 py-2 text-sm">{formatDate(payment.paidAt)}</td>
+                                    <td className="px-4 py-2 text-sm">
+                                      {payment.isInitialPayment ? (
+                                        <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">Initial Payment</span>
+                                      ) : (
+                                        <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Unpaid Payment</span>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-2 text-sm font-medium">{formatCurrency(payment.amount)}</td>
+                                    <td className="px-4 py-2 text-sm capitalize">
+                                      {payment.paymentMode === 'personal-qr' ? 'Personal QR (Vaibhav)' : payment.paymentMode.replace('-', ' ')}
+                                    </td>
+                                    <td className="px-4 py-2 text-sm text-gray-600">{payment.paymentRemarks || '-'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </td>
                 </tr>

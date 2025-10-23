@@ -40,6 +40,14 @@ export interface Service {
   amount: number;
 }
 
+export interface PaymentHistoryEntry {
+  amount: number;
+  paymentMode: 'cash' | 'shop-qr' | 'personal-qr' | 'other';
+  paymentRemarks?: string;
+  paidAt: string;
+  isInitialPayment: boolean;
+}
+
 export interface Task {
   id: string;
   serialNo: string;
@@ -56,6 +64,7 @@ export interface Task {
   paymentRemarks?: string;
   amountCollected: number;
   unpaidAmount: number;
+  paymentHistory?: PaymentHistoryEntry[];
   documentDetails?: string;
   uploadedDocuments?: UploadedDocument[];
   remarks?: string;

@@ -11,6 +11,7 @@ import Header from './components/Layout/Header';
 import Dashboard from './components/Dashboard/Dashboard';
 import ReportsDashboard from './components/Reports/ReportsDashboard';
 import EnhancedTaskModal from './components/Modals/EnhancedTaskModal';
+import AddPaymentModal from './components/Modals/AddPaymentModal';
 // import ClientModal from './components/Modals/ClientModal';
 import TaskOverview from './components/Tasks/TaskOverview';
 import TaskList from './components/Tasks/TaskList';
@@ -126,7 +127,36 @@ function App() {
   };
 
   // Function to calculate balances from sales entries
-  const calculateBalancesFromEntries = (entries: any[]) => {
+  const calculateBalancesFromTasks = (tasks: Task[]) => {
+    console.log('💰 Calculating balances from tasks:', tasks.length);
+    const balances = {
+      cash: 0,
+      shopqr: 0,
+      vaibhav: 0
+    };
+
+    tasks.forEach((task) => {
+      if (task.paymentHistory && task.paymentHistory.length > 0) {
+        task.paymentHistory.forEach((payment) => {
+          const amount = payment.amount || 0;
+          const paymentMode = payment.paymentMode || '';
+          
+          if (paymentMode === 'cash') {
+            balances.cash += amount;
+          } else if (paymentMode === 'shop-qr') {
+            balances.shopqr += amount;
+          } else if (paymentMode === 'personal-qr') {
+            balances.vaibhav += amount;
+          }
+        });
+      }
+    });
+
+    console.log('💰 Task balances calculated:', balances);
+    return balances;
+  };
+
+  const calculateBalancesFromEntries = (entries: any[], existingTasks?: Task[]) => {
     console.log('🔄 calculateBalancesFromEntries called with', entries.length, 'entries');
     console.log('📋 Entries details:', entries);
     
@@ -381,6 +411,14 @@ function App() {
       }
     });
 
+    if (existingTasks && existingTasks.length > 0) {
+      console.log('💰 Adding task payment balances...');
+      const taskBalances = calculateBalancesFromTasks(existingTasks);
+      newBankBalances.cash += taskBalances.cash;
+      newBankBalances.shopqr += taskBalances.shopqr;
+      newBankBalances.vaibhav += taskBalances.vaibhav;
+    }
+
     console.log('Final calculated bank balances:', newBankBalances);
     console.log('Final calculated mobile balances:', newMobileBalances);
     console.log('🏦 Setting bank balances from calculateBalancesFromEntries');
@@ -425,6 +463,8 @@ function App() {
   const [employees, setEmployees] = useState(dashboardData.employees);
   const [activeScreen, setActiveScreen] = useState('dashboard');
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [selectedTaskForPayment, setSelectedTaskForPayment] = useState<Task | null>(null);
   // Remove isClientModalOpen, use ClientList's modal instead
   const [tasks, setTasks] = useState<Task[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -648,6 +688,7 @@ function App() {
           paymentRemarks: t.paymentRemarks || '',
           amountCollected: t.amountCollected || 0,
           unpaidAmount: t.unpaidAmount || 0,
+          paymentHistory: t.paymentHistory || [],
           documentDetails: t.documentDetails || '',
           uploadedDocuments: [],
           remarks: t.remarks || '',
@@ -684,6 +725,7 @@ function App() {
           paymentRemarks: t.paymentRemarks || '',
           amountCollected: t.amountCollected || 0,
           unpaidAmount: t.unpaidAmount || 0,
+          paymentHistory: t.paymentHistory || [],
           documentDetails: t.documentDetails || '',
           uploadedDocuments: [],
           remarks: t.remarks || '',
@@ -693,6 +735,25 @@ function App() {
           createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
           updatedByName: typeof t.updatedBy === 'object' ? (t.updatedBy?.username || t.updatedBy?.email || '') : ''
         };
+        
+        // Update dashboard balances in real-time based on payment mode
+        if (taskData.amountCollected > 0) {
+          const amount = taskData.amountCollected;
+          const paymentMode = taskData.paymentMode;
+          
+          setBankBalances(prev => {
+            const updated = { ...prev };
+            if (paymentMode === 'cash') {
+              updated.cash += amount;
+            } else if (paymentMode === 'shop-qr') {
+              updated.shopqr += amount;
+            } else if (paymentMode === 'personal-qr') {
+              updated.vaibhav += amount;
+            }
+            return updated;
+          });
+        }
+        
         // Add task only if it doesn't already exist (prevent duplicates from SSE)
         setTasks(prev => {
           if (prev.some(x => x.id === mapped.id)) return prev;
@@ -750,6 +811,7 @@ function App() {
           paymentRemarks: t.paymentRemarks || '',
           amountCollected: t.amountCollected || 0,
           unpaidAmount: t.unpaidAmount || 0,
+          paymentHistory: t.paymentHistory || [],
           documentDetails: t.documentDetails || '',
           uploadedDocuments: [],
           remarks: t.remarks || '',
@@ -766,6 +828,86 @@ function App() {
   const handleTaskEdit = (task: Task) => {
     setEditingTask(task);
     setIsTaskModalOpen(true);
+  };
+
+  const handleAddPayment = (task: Task) => {
+    setSelectedTaskForPayment(task);
+    setIsPaymentModalOpen(true);
+  };
+
+  const handlePaymentSubmit = async (taskId: string, receivedAmount: number, paymentMode: string, paymentRemarks?: string) => {
+    try {
+      const res = await apiFetch(`/api/data/tasks/${taskId}/add-payment`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json', 
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) 
+        },
+        body: JSON.stringify({ 
+          receivedAmount, 
+          paymentMode, 
+          paymentRemarks 
+        })
+      });
+      
+      const json = await res.json().catch(() => ({}));
+      
+      if (res.ok && json?.success && json?.data?.task) {
+        const t = json.data.task;
+        const mapped: Task = {
+          id: t._id,
+          serialNo: t.serialNo || '',
+          date: t.date,
+          taskName: t.taskName,
+          customerName: t.customerName,
+          customerType: t.customerType,
+          serviceDeliveryDate: t.serviceDeliveryDate || '',
+          taskType: t.taskType,
+          assignedTo: t.assignedTo || '',
+          serviceCharge: t.serviceCharge || 0,
+          finalCharges: t.finalCharges || 0,
+          paymentMode: t.paymentMode || 'cash',
+          paymentRemarks: t.paymentRemarks || '',
+          amountCollected: t.amountCollected || 0,
+          unpaidAmount: t.unpaidAmount || 0,
+          paymentHistory: t.paymentHistory || [],
+          documentDetails: t.documentDetails || '',
+          uploadedDocuments: [],
+          remarks: t.remarks || '',
+          status: t.status
+        };
+        
+        // Update dashboard balances in real-time based on payment mode
+        setBankBalances(prev => {
+          const updated = { ...prev };
+          if (paymentMode === 'cash') {
+            updated.cash += receivedAmount;
+          } else if (paymentMode === 'shop-qr') {
+            updated.shopqr += receivedAmount;
+          } else if (paymentMode === 'personal-qr') {
+            updated.vaibhav += receivedAmount;
+          }
+          return updated;
+        });
+        
+        // Update the task in the local state
+        setTasks(prev => prev.map(task => task.id === mapped.id ? mapped : task));
+        
+        // Show success message (you can implement a toast notification here)
+        console.log('Payment added successfully:', json.message);
+        
+        // Close the modal
+        setIsPaymentModalOpen(false);
+        setSelectedTaskForPayment(null);
+        
+        return;
+      } else {
+        // Show error message
+        console.error('Failed to add payment:', json?.message || 'Unknown error');
+      }
+    } catch (error) {
+      console.error('Error adding payment:', error);
+    }
   };
 
   const handleLogout = () => {
@@ -844,6 +986,7 @@ function App() {
               paymentRemarks: t.paymentRemarks || '',
               amountCollected: t.amountCollected || 0,
               unpaidAmount: t.unpaidAmount || 0,
+              paymentHistory: t.paymentHistory || [],
               documentDetails: t.documentDetails || '',
               uploadedDocuments: t.uploadedDocuments || [],
               remarks: t.remarks || '',
@@ -853,8 +996,13 @@ function App() {
               createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
               updatedByName: typeof t.updatedBy === 'object' ? (t.updatedBy?.username || t.updatedBy?.email || '') : ''
             });
+            
+            let loadedTasks: Task[] = [];
             if (clientsJson?.success) setClients((clientsJson.data.clients || []).map(mapClient));
-            if (tasksJson?.success) setTasks((tasksJson.data.tasks || []).map(mapTask));
+            if (tasksJson?.success) {
+              loadedTasks = (tasksJson.data.tasks || []).map(mapTask);
+              setTasks(loadedTasks);
+            }
             if (servicesJson?.success) setServices((servicesJson.data.services || []).map((s:any)=>({ id: s._id, name: s.name, amount: s.amount || 0 })));
             if (fundJson?.success) {
               const entries = (fundJson.data.entries || []) as any[];
@@ -931,7 +1079,7 @@ function App() {
               });
               // Removed setting dashboardEntries to avoid duplicates; balances are recalculated from fetched entries
               console.log('Calling calculateBalancesFromEntries with entries:', entries);
-              calculateBalancesFromEntries(entries);
+              calculateBalancesFromEntries(entries, loadedTasks);
             }
           } catch {}
 
@@ -964,6 +1112,7 @@ function App() {
                     paymentRemarks: t.paymentRemarks || '',
                     amountCollected: t.amountCollected || 0,
                     unpaidAmount: t.unpaidAmount || 0,
+                    paymentHistory: t.paymentHistory || [],
                     documentDetails: t.documentDetails || '',
                     uploadedDocuments: t.uploadedDocuments || [],
                     remarks: t.remarks || '',
@@ -996,6 +1145,7 @@ function App() {
                     paymentRemarks: t.paymentRemarks || '',
                     amountCollected: t.amountCollected || 0,
                     unpaidAmount: t.unpaidAmount || 0,
+                    paymentHistory: t.paymentHistory || [],
                     documentDetails: t.documentDetails || '',
                     uploadedDocuments: t.uploadedDocuments || [],
                     remarks: t.remarks || '',
@@ -1065,6 +1215,7 @@ function App() {
           paymentRemarks: t.paymentRemarks || '',
           amountCollected: t.amountCollected || 0,
           unpaidAmount: t.unpaidAmount || 0,
+          paymentHistory: t.paymentHistory || [],
           documentDetails: t.documentDetails || '',
           uploadedDocuments: t.uploadedDocuments || [],
           remarks: t.remarks || '',
@@ -1112,6 +1263,7 @@ function App() {
                 paymentRemarks: t.paymentRemarks || '',
                 amountCollected: t.amountCollected || 0,
                 unpaidAmount: t.unpaidAmount || 0,
+                paymentHistory: t.paymentHistory || [],
                 documentDetails: t.documentDetails || '',
                 uploadedDocuments: t.uploadedDocuments || [],
                 remarks: t.remarks || '',
@@ -1144,6 +1296,7 @@ function App() {
                 paymentRemarks: t.paymentRemarks || '',
                 amountCollected: t.amountCollected || 0,
                 unpaidAmount: t.unpaidAmount || 0,
+                paymentHistory: t.paymentHistory || [],
                 documentDetails: t.documentDetails || '',
                 uploadedDocuments: t.uploadedDocuments || [],
                 remarks: t.remarks || '',
@@ -1330,7 +1483,7 @@ function App() {
         onFundTransferBalanceUpdate={handleFundTransferBalanceUpdate}
         onMobileBalanceUpdate={handleMobileBalanceUpdate}
         onBankCashAepsUpdate={handleBankCashAepsUpdate}
-        onBalanceRecalculation={calculateBalancesFromEntries}
+        onBalanceRecalculation={(entries) => calculateBalancesFromEntries(entries, tasks)}
         dashboardEntries={dashboardEntries}
         setDashboardEntries={setDashboardEntries}
       />
@@ -1369,6 +1522,7 @@ function App() {
               onTaskUpdate={handleTaskUpdate}
               onTaskEdit={handleTaskEdit}
               onTaskDelete={handleTaskDelete}
+              onAddPayment={handleAddPayment}
             />
           </div>
         );
@@ -1398,6 +1552,7 @@ function App() {
               onTaskUpdate={handleTaskUpdate}
               onTaskEdit={handleTaskEdit}
               onTaskDelete={handleTaskDelete}
+              onAddPayment={handleAddPayment}
             />
           </div>
         );
@@ -1754,6 +1909,15 @@ function App() {
         onAddService={handleAddService}
         onAddEmployee={handleAddEmployee}
         editingTask={editingTask}
+      />
+      <AddPaymentModal
+        isOpen={isPaymentModalOpen}
+        onClose={() => {
+          setIsPaymentModalOpen(false);
+          setSelectedTaskForPayment(null);
+        }}
+        onSubmit={handlePaymentSubmit}
+        task={selectedTaskForPayment}
       />
     </div>
   );
