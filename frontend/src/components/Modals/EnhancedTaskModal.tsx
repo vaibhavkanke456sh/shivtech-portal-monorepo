@@ -57,6 +57,8 @@ const EnhancedTaskModal: React.FC<EnhancedTaskModalProps> = ({
     assignedTo: '',
     serviceCharge: 0,
     finalCharges: 0,
+    costOfService: 0,
+    profit: 0,
     paymentMode: 'cash' as 'cash' | 'shop-qr' | 'personal-qr' | 'other',
     paymentRemarks: '',
     amountCollected: 0,
@@ -86,6 +88,8 @@ const EnhancedTaskModal: React.FC<EnhancedTaskModalProps> = ({
           assignedTo: editingTask.assignedTo || '',
           serviceCharge: editingTask.serviceCharge || 0,
           finalCharges: editingTask.finalCharges || 0,
+          costOfService: editingTask.costOfService || 0,
+          profit: editingTask.profit || 0,
           paymentMode: editingTask.paymentMode || 'cash',
           paymentRemarks: editingTask.paymentRemarks || '',
           amountCollected: editingTask.amountCollected || 0,
@@ -107,11 +111,13 @@ const EnhancedTaskModal: React.FC<EnhancedTaskModalProps> = ({
 
   useEffect(() => {
     const unpaidAmount = Math.max(formData.finalCharges - formData.amountCollected, 0);
+    const profit = formData.finalCharges - formData.costOfService;
     setFormData(prev => ({
       ...prev,
-      unpaidAmount
+      unpaidAmount,
+      profit
     }));
-  }, [formData.finalCharges, formData.amountCollected]);
+  }, [formData.finalCharges, formData.amountCollected, formData.costOfService]);
 
   useEffect(() => {
     const matchingService = services.find(s => s.name.toLowerCase() === formData.taskName.toLowerCase());
@@ -202,6 +208,8 @@ const EnhancedTaskModal: React.FC<EnhancedTaskModalProps> = ({
       assignedTo: '',
       serviceCharge: 0,
       finalCharges: 0,
+      costOfService: 0,
+      profit: 0,
       paymentMode: 'cash',
       paymentRemarks: '',
       amountCollected: 0,
@@ -460,6 +468,33 @@ const EnhancedTaskModal: React.FC<EnhancedTaskModalProps> = ({
                 onChange={(e) => setFormData(prev => ({ ...prev, finalCharges: Number(e.target.value) }))}
                 min="0"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              />
+            </div>
+
+            {/* Cost of Service */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Cost of Service
+              </label>
+              <input
+                type="number"
+                value={formData.costOfService}
+                onChange={(e) => setFormData(prev => ({ ...prev, costOfService: Number(e.target.value) }))}
+                min="0"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              />
+            </div>
+
+            {/* Profit */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Profit
+              </label>
+              <input
+                type="number"
+                value={formData.profit}
+                readOnly
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
               />
             </div>
 

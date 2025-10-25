@@ -19,6 +19,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, services
     customerType: 'new' as 'new' | 'old',
     serviceDeliveryDate: '',
     amount: 0,
+    costOfService: 0,
+    profit: 0,
     paymentMode: 'cash' as 'cash' | 'bank' | 'upi' | 'wallet',
     amountCollected: 0,
     unpaidAmount: 0,
@@ -40,21 +42,35 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, services
     const selectedService = services.find(s => s.id === formData.taskName);
     const amount = selectedService ? selectedService.amount : 0;
     const unpaidAmount = Math.max(amount - formData.amountCollected, 0);
+    const profit = amount - formData.costOfService;
     
     setFormData(prev => ({
       ...prev,
       amount,
-      unpaidAmount
+      unpaidAmount,
+      profit
     }));
-  }, [formData.taskName, formData.amountCollected, services]);
+  }, [formData.taskName, formData.amountCollected, formData.costOfService, services]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     const task: Omit<Task, 'id'> = {
-      ...formData,
+      serialNo: formData.serialNo,
+      date: formData.date,
+      taskName: formData.taskName,
+      customerName: formData.customerName,
+      customerType: formData.customerType,
       serviceDeliveryDate: formData.serviceDeliveryDate || undefined,
+      taskType: formData.priority === 'icu' ? 'do-now' : formData.priority === 'urgent' ? 'urgent' : 'normal',
       assignedTo: formData.assignedTo || undefined,
+      serviceCharge: formData.amount,
+      finalCharges: formData.amount,
+      costOfService: formData.costOfService,
+      profit: formData.profit,
+      paymentMode: formData.paymentMode === 'bank' ? 'shop-qr' : formData.paymentMode === 'upi' ? 'personal-qr' : formData.paymentMode === 'wallet' ? 'other' : 'cash',
+      amountCollected: formData.amountCollected,
+      unpaidAmount: formData.unpaidAmount,
       status: formData.assignedTo ? 'assigned' : 'unassigned'
     };
     
@@ -70,6 +86,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, services
       customerType: 'new',
       serviceDeliveryDate: '',
       amount: 0,
+      costOfService: 0,
+      profit: 0,
       paymentMode: 'cash',
       amountCollected: 0,
       unpaidAmount: 0,
@@ -198,6 +216,31 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, services
               <input
                 type="number"
                 value={formData.amount}
+                readOnly
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Cost of Service
+              </label>
+              <input
+                type="number"
+                value={formData.costOfService}
+                onChange={(e) => setFormData(prev => ({ ...prev, costOfService: Number(e.target.value) }))}
+                min="0"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Profit
+              </label>
+              <input
+                type="number"
+                value={formData.profit}
                 readOnly
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
               />

@@ -60,6 +60,8 @@ export interface Task {
   assignedTo?: string;
   serviceCharge: number;
   finalCharges: number;
+  costOfService: number;
+  profit: number;
   paymentMode: 'cash' | 'shop-qr' | 'personal-qr' | 'other';
   paymentRemarks?: string;
   amountCollected: number;
