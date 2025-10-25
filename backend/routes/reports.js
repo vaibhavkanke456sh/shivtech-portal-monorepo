@@ -6,7 +6,7 @@ import Sale from '../models/Sale.js';
 import Activity from '../models/Activity.js';
 
 const router = express.Router();
-router.use(authenticateToken, requireRole(['admin']));
+router.use(authenticateToken, requireRole(['admin', 'web_developer']));
 
 // Helper to parse date range
 const parseRange = (req) => {

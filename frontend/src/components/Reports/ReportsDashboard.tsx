@@ -54,7 +54,7 @@ const ReportsDashboard: React.FC<Props> = ({ token, role }) => {
 
   // Heartbeat every 15 minutes
   useEffect(() => {
-    if (role !== 'admin') return;
+    if (role !== 'admin' && role !== 'developer') return;
     const send = () => {
       apiFetch('/api/reports/heartbeat', { method: 'POST', headers });
     };
@@ -63,8 +63,8 @@ const ReportsDashboard: React.FC<Props> = ({ token, role }) => {
     return () => clearInterval(id);
   }, [headers, role]);
 
-  if (role !== 'admin') {
-    return <div className="p-6"><div className="text-red-600">Access denied. Reports are for Admins.</div></div>;
+  if (role !== 'admin' && role !== 'developer') {
+    return <div className="p-6"><div className="text-red-600">Access denied. Reports are for Admins and Web Developers.</div></div>;
   }
 
   const pieData = useMemo(() => ({
