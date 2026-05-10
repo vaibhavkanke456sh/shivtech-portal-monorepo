@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import path from 'path';
 import connectDB from './config/database.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 
@@ -12,8 +14,10 @@ import adminRoutes from './routes/admin.js';
 import dataRoutes from './routes/data.js';
 import reportsRoutes from './routes/reports.js';
 
-// Load environment variables
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 // Initialize express
 const app = express();
@@ -37,6 +41,9 @@ app.use(cors({
       'http://localhost:3000',
       'http://localhost:3001',
       'http://localhost:5173',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'http://127.0.0.1:5173',
       'https://shivtech-portal-frontend.vercel.app',
       'https://shivtech-portal-frontend-kfu227h14-vaibhavkanke456shs-projects.vercel.app',
       'https://shivtech-portal-frontend-36cu8oyrm-vaibhavkanke456shs-projects.vercel.app',
