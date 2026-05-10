@@ -4,6 +4,8 @@ import { authenticateToken } from '../middleware/auth.js';
 import Client from '../models/Client.js';
 import Task from '../models/Task.js';
 import Service from '../models/Service.js';
+import ServiceGroup from '../models/ServiceGroup.js';
+import * as serviceController from '../controllers/serviceController.js';
 import FundTransfer from '../models/FundTransfer.js';
 import AepsEntry from '../models/AepsEntry.js';
 import MobileBalance from '../models/MobileBalance.js';
@@ -11,6 +13,7 @@ import BankCashAeps from '../models/BankCashAeps.js';
 import SalesEntry from '../models/SalesEntry.js';
 import OnlineReceivedCashGiven from '../models/OnlineReceivedCashGiven.js';
 import User from '../models/User.js';
+import TaskGroup from '../models/TaskGroup.js';
 
 const router = express.Router();
 
@@ -67,29 +70,16 @@ router.get('/clients', async (req, res) => {
 });
 
 // Services
-router.get('/services', async (req, res) => {
-  const services = await Service.find({ owner: req.user._id, isDeleted: false }).sort({ createdAt: -1 });
-  res.json({ success: true, data: { services } });
-});
+router.get('/services', serviceController.getServices);
+router.post('/services', serviceController.createService);
+router.put('/services/:id', serviceController.updateService);
+router.delete('/services/:id', serviceController.deleteService);
 
-router.post('/services', async (req, res) => {
-  const payload = { name: req.body?.name?.trim(), amount: Number(req.body?.amount) || 0, owner: req.user._id };
-  const service = await Service.create(payload);
-  res.status(201).json({ success: true, data: { service } });
-});
-
-router.put('/services/:id', async (req, res) => {
-  const updates = { ...req.body };
-  if (typeof updates.name === 'string') updates.name = updates.name.trim();
-  if (typeof updates.amount !== 'undefined') updates.amount = Number(updates.amount) || 0;
-  const service = await Service.findOneAndUpdate({ _id: req.params.id, owner: req.user._id }, updates, { new: true });
-  res.json({ success: true, data: { service } });
-});
-
-router.delete('/services/:id', async (req, res) => {
-  await Service.findOneAndUpdate({ _id: req.params.id, owner: req.user._id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
-  res.json({ success: true });
-});
+// Service Groups
+router.get('/service-groups', serviceController.getServiceGroups);
+router.post('/service-groups', serviceController.createServiceGroup);
+router.put('/service-groups/:id', serviceController.updateServiceGroup);
+router.delete('/service-groups/:id', serviceController.deleteServiceGroup);
 
 router.post('/clients', async (req, res) => {
   const client = await Client.create(req.body);
@@ -251,6 +241,188 @@ router.put('/tasks/:id/add-payment', async (req, res) => {
       success: false, 
       message: 'Internal server error' 
     });
+  }
+});
+
+// Task Groups
+router.get('/task-groups', async (req, res) => {
+  try {
+    const groups = await TaskGroup.find({}).sort({ createdAt: -1 });
+    res.json({ success: true, data: { groups } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+router.get('/task-groups/:id', async (req, res) => {
+  try {
+    const group = await TaskGroup.findById(req.params.id);
+    if (!group) return res.status(404).json({ success: false, message: 'Group not found' });
+    const tasks = await Task.find({ groupId: req.params.id, isDeleted: false })
+      .populate('createdBy', 'username email')
+      .populate('updatedBy', 'username email');
+    res.json({ success: true, data: { group, tasks } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+router.post('/task-groups', async (req, res) => {
+  try {
+    const { tasks: taskPayloads, groupPayment } = req.body;
+
+    if (!taskPayloads || !Array.isArray(taskPayloads) || taskPayloads.length < 2) {
+      return res.status(400).json({ success: false, message: 'At least 2 tasks required for a group' });
+    }
+
+    const firstTask = taskPayloads[0];
+    const totalAmount = taskPayloads.reduce((sum, t) => sum + (Number(t.finalCharges) || 0), 0);
+    const totalPaid = groupPayment ? (Number(groupPayment.amountCollected) || 0) : taskPayloads.reduce((sum, t) => sum + (Number(t.amountCollected) || 0), 0);
+    const remainingAmount = Math.max(totalAmount - totalPaid, 0);
+
+    const groupPaymentHistory = [];
+    if (totalPaid > 0) {
+      groupPaymentHistory.push({
+        amount: totalPaid,
+        paymentMode: groupPayment ? (groupPayment.paymentMode || 'cash') : (firstTask.paymentMode || 'cash'),
+        paymentRemarks: groupPayment ? (groupPayment.paymentRemarks || '') : '',
+        paidAt: new Date(),
+        isInitialPayment: true
+      });
+    }
+
+    const group = await TaskGroup.create({
+      customerName: firstTask.customerName,
+      customerType: firstTask.customerType,
+      documentDetails: firstTask.documentDetails || '',
+      totalAmount,
+      totalPaid,
+      remainingAmount,
+      paymentMode: groupPayment ? (groupPayment.paymentMode || 'cash') : (firstTask.paymentMode || 'cash'),
+      paymentNotes: groupPayment ? (groupPayment.paymentRemarks || '') : '',
+      paymentHistory: groupPaymentHistory,
+      createdBy: req.user?._id,
+      updatedBy: req.user?._id
+    });
+
+    const createdTasks = [];
+    for (const taskData of taskPayloads) {
+      const payload = {
+        ...taskData,
+        groupId: group._id,
+        isGrouped: true,
+        createdBy: req.user?._id,
+        updatedBy: req.user?._id
+      };
+
+      if (groupPayment) {
+        payload.amountCollected = 0;
+        payload.unpaidAmount = Number(taskData.finalCharges) || 0;
+        payload.paymentHistory = [];
+      } else {
+        if (payload.amountCollected > 0) {
+          payload.paymentHistory = [{
+            amount: payload.amountCollected,
+            paymentMode: payload.paymentMode || 'cash',
+            paymentRemarks: payload.paymentRemarks || '',
+            paidAt: new Date(),
+            isInitialPayment: true
+          }];
+        }
+      }
+
+      if (payload.status === 'completed' && !payload.completedAt) payload.completedAt = new Date();
+      if (payload.status !== 'completed') payload.completedAt = null;
+
+      const task = await Task.create(payload);
+      const populated = await Task.findById(task._id).populate('createdBy', 'username email').populate('updatedBy', 'username email');
+      createdTasks.push(populated);
+      broadcastTaskEvent('task_created', { task: populated });
+    }
+
+    res.status(201).json({ success: true, data: { group, tasks: createdTasks } });
+  } catch (error) {
+    console.error('Error creating task group:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+router.put('/task-groups/:id/add-payment', async (req, res) => {
+  try {
+    const { receivedAmount, paymentMode, paymentRemarks } = req.body;
+
+    if (!receivedAmount || receivedAmount <= 0) {
+      return res.status(400).json({ success: false, message: 'Received amount must be greater than 0' });
+    }
+
+    const group = await TaskGroup.findById(req.params.id);
+    if (!group) return res.status(404).json({ success: false, message: 'Group not found' });
+
+    if (receivedAmount > group.remainingAmount) {
+      return res.status(400).json({ success: false, message: `Amount cannot exceed remaining balance (${group.remainingAmount})` });
+    }
+
+    const newTotalPaid = group.totalPaid + receivedAmount;
+    const newRemaining = Math.max(group.totalAmount - newTotalPaid, 0);
+
+    const newPayment = {
+      amount: receivedAmount,
+      paymentMode: paymentMode || 'cash',
+      paymentRemarks: paymentRemarks || '',
+      paidAt: new Date(),
+      isInitialPayment: false
+    };
+
+    const updatedGroup = await TaskGroup.findByIdAndUpdate(
+      req.params.id,
+      {
+        totalPaid: newTotalPaid,
+        remainingAmount: newRemaining,
+        updatedBy: req.user?._id,
+        $push: { paymentHistory: newPayment }
+      },
+      { new: true }
+    );
+
+    const groupTasks = await Task.find({ groupId: req.params.id, isDeleted: false });
+    const taskCount = groupTasks.length;
+    const perTaskShare = taskCount > 0 ? receivedAmount / taskCount : 0;
+
+    const updatedTasks = [];
+    for (const t of groupTasks) {
+      const addAmount = Math.min(perTaskShare, t.unpaidAmount);
+      if (addAmount > 0) {
+        const updated = await Task.findByIdAndUpdate(
+          t._id,
+          {
+            amountCollected: t.amountCollected + addAmount,
+            unpaidAmount: Math.max(t.unpaidAmount - addAmount, 0),
+            updatedBy: req.user?._id,
+            $push: {
+              paymentHistory: {
+                amount: addAmount,
+                paymentMode: paymentMode || 'cash',
+                paymentRemarks: paymentRemarks || '',
+                paidAt: new Date(),
+                isInitialPayment: false
+              }
+            }
+          },
+          { new: true }
+        ).populate('createdBy', 'username email').populate('updatedBy', 'username email');
+        updatedTasks.push(updated);
+        broadcastTaskEvent('task_updated', { task: updated });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: { group: updatedGroup, tasks: updatedTasks },
+      message: `Group payment of ${receivedAmount} added. ${newRemaining > 0 ? `Remaining: ${newRemaining}` : 'Fully paid!'}`
+    });
+  } catch (error) {
+    console.error('Error adding group payment:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 

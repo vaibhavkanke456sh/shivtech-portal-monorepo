@@ -34,10 +34,18 @@ export interface TodayMetrics {
   expense: number;
 }
 
-export interface Service {
-  id: string;
+export interface ServiceGroup {
+  _id: string;
   name: string;
-  amount: number;
+}
+
+export interface Service {
+  _id: string;
+  name: string;
+  defaultCharge: number;
+  serviceCost: number;
+  defaultProfit: number;
+  groupId: string | ServiceGroup;
 }
 
 export interface PaymentHistoryEntry {
@@ -71,10 +79,35 @@ export interface Task {
   uploadedDocuments?: UploadedDocument[];
   remarks?: string;
   status: 'service-delivered' | 'ongoing' | 'completed' | 'assigned' | 'unassigned';
+  groupId?: string;
+  isGrouped?: boolean;
   createdById?: string;
   updatedById?: string;
   createdByName?: string;
   updatedByName?: string;
+}
+
+export interface TaskGroupPaymentEntry {
+  amount: number;
+  paymentMode: 'cash' | 'shop-qr' | 'personal-qr' | 'other';
+  paymentRemarks?: string;
+  paidAt: string;
+  isInitialPayment: boolean;
+}
+
+export interface TaskGroup {
+  id: string;
+  customerName: string;
+  customerType: 'new' | 'old';
+  documentDetails?: string;
+  totalAmount: number;
+  totalPaid: number;
+  remainingAmount: number;
+  paymentMode: 'cash' | 'shop-qr' | 'personal-qr' | 'other';
+  paymentNotes?: string;
+  paymentHistory?: TaskGroupPaymentEntry[];
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface UploadedDocument {

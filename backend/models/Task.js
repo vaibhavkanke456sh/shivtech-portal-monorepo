@@ -45,6 +45,8 @@ const taskSchema = new mongoose.Schema(
     completedAt: { type: Date, default: null },
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
+    groupId: { type: mongoose.Schema.Types.ObjectId, ref: 'TaskGroup', default: null },
+    isGrouped: { type: Boolean, default: false },
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false },

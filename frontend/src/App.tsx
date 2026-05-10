@@ -11,7 +11,9 @@ import Header from './components/Layout/Header';
 import Dashboard from './components/Dashboard/Dashboard';
 import ReportsDashboard from './components/Reports/ReportsDashboard';
 import EnhancedTaskModal from './components/Modals/EnhancedTaskModal';
+import ServiceModal from './components/Modals/ServiceModal';
 import AddPaymentModal from './components/Modals/AddPaymentModal';
+import GroupedTaskModal from './components/Modals/GroupedTaskModal';
 // import ClientModal from './components/Modals/ClientModal';
 import TaskOverview from './components/Tasks/TaskOverview';
 import TaskList from './components/Tasks/TaskList';
@@ -496,11 +498,15 @@ function App() {
 
   // Dynamic services and employees
   const [services, setServices] = useState<Service[]>([]);
+  const [serviceGroups, setServiceGroups] = useState<ServiceGroup[]>([]);
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [employees, setEmployees] = useState(dashboardData.employees);
   const [activeScreen, setActiveScreen] = useState('dashboard');
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedTaskForPayment, setSelectedTaskForPayment] = useState<Task | null>(null);
+  const [isGroupedTaskModalOpen, setIsGroupedTaskModalOpen] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   // Remove isClientModalOpen, use ClientList's modal instead
   const [tasks, setTasks] = useState<Task[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -729,6 +735,8 @@ function App() {
           uploadedDocuments: [],
           remarks: t.remarks || '',
           status: t.status || 'unassigned',
+          groupId: t.groupId ? String(t.groupId) : undefined,
+          isGrouped: t.isGrouped || false,
           createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
           updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
           createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -766,6 +774,8 @@ function App() {
           uploadedDocuments: [],
           remarks: t.remarks || '',
           status: t.status || 'unassigned',
+          groupId: t.groupId ? String(t.groupId) : undefined,
+          isGrouped: t.isGrouped || false,
           createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
           updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
           createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -804,6 +814,72 @@ function App() {
         }
       }
     } catch {}
+  };
+
+  const handleSaveGrouped = async (taskPayloads: Omit<Task, 'id'>[], groupPayment: { amountCollected: number; paymentMode: string; paymentRemarks: string } | null) => {
+    try {
+      const res = await apiFetch('/api/data/task-groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+        body: JSON.stringify({ tasks: taskPayloads, groupPayment })
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) throw new Error(json?.message || 'Failed to create task group');
+      const createdTasks: Task[] = (json.data.tasks || []).map((t: any) => ({
+        id: t._id,
+        serialNo: t.serialNo || '',
+        date: t.date,
+        taskName: t.taskName,
+        customerName: t.customerName,
+        customerType: t.customerType,
+        serviceDeliveryDate: t.serviceDeliveryDate || '',
+        taskType: t.taskType,
+        assignedTo: t.assignedTo || '',
+        serviceCharge: t.serviceCharge || 0,
+        finalCharges: t.finalCharges || 0,
+        costOfService: t.costOfService || 0,
+        profit: t.profit || 0,
+        paymentMode: t.paymentMode || 'cash',
+        paymentRemarks: t.paymentRemarks || '',
+        amountCollected: t.amountCollected || 0,
+        unpaidAmount: t.unpaidAmount || 0,
+        paymentHistory: t.paymentHistory || [],
+        documentDetails: t.documentDetails || '',
+        uploadedDocuments: [],
+        remarks: t.remarks || '',
+        status: t.status || 'unassigned',
+        groupId: t.groupId ? String(t.groupId) : undefined,
+        isGrouped: true,
+        createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
+        updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
+        createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
+        updatedByName: typeof t.updatedBy === 'object' ? (t.updatedBy?.username || t.updatedBy?.email || '') : ''
+      }));
+      setTasks(prev => {
+        const existingIds = new Set(prev.map(x => x.id));
+        const newTasks = createdTasks.filter(t => !existingIds.has(t.id));
+        return [...newTasks, ...prev];
+      });
+      const firstPayload = taskPayloads[0];
+      if (firstPayload?.customerType === 'new') {
+        const exists = clients.some(c => c.name === firstPayload.customerName);
+        if (!exists) {
+          await handleSaveClient({ name: firstPayload.customerName, phone: '' });
+        }
+      }
+    } catch {}
+  };
+
+  const handleViewGroup = (groupId: string) => {
+    setSelectedGroupId(groupId);
+    setIsGroupedTaskModalOpen(true);
+  };
+
+  const handleGroupTasksUpdated = (updatedTasks: Task[]) => {
+    setTasks(prev => {
+      const updatedMap = new Map(updatedTasks.map(t => [t.id, t]));
+      return prev.map(t => updatedMap.has(t.id) ? updatedMap.get(t.id)! : t);
+    });
   };
 
   const handleSaveClient = async (clientData: Omit<Client, 'id' | 'createdAt'>) => {
@@ -851,7 +927,9 @@ function App() {
           documentDetails: t.documentDetails || '',
           uploadedDocuments: [],
           remarks: t.remarks || '',
-          status: t.status
+          status: t.status,
+          groupId: t.groupId ? String(t.groupId) : undefined,
+          isGrouped: t.isGrouped || false
         };
         setTasks(prev => prev.map(task => task.id === mapped.id ? mapped : task));
         return;
@@ -995,16 +1073,18 @@ function App() {
           setLoginType(role === 'web_developer' ? 'developer' : role);
           try {
             const headers: any = { Authorization: `Bearer ${token}` };
-            const [clientsRes, tasksRes, fundRes, servicesRes] = await Promise.all([
+            const [clientsRes, tasksRes, fundRes, servicesRes, groupsRes] = await Promise.all([
               apiFetch('/api/data/clients', { headers }),
               apiFetch('/api/data/tasks', { headers }),
               apiFetch('/api/data/sales-entries', { headers }),
-              apiFetch('/api/data/services', { headers })
+              apiFetch('/api/data/services', { headers }),
+              apiFetch('/api/data/service-groups', { headers })
             ]);
             const clientsJson = await clientsRes.json();
             const tasksJson = await tasksRes.json();
             const fundJson = await fundRes.json();
             const servicesJson = await servicesRes.json();
+            const groupsJson = await groupsRes.json();
             const mapClient = (c: any): Client => ({ id: c._id, name: c.name, phone: c.phone || '', createdAt: new Date(c.createdAt).toISOString().split('T')[0] });
             const mapTask = (t: any): Task => ({
               id: t._id,
@@ -1027,6 +1107,8 @@ function App() {
               uploadedDocuments: t.uploadedDocuments || [],
               remarks: t.remarks || '',
               status: t.status || 'unassigned',
+              groupId: t.groupId ? String(t.groupId) : undefined,
+              isGrouped: t.isGrouped || false,
               createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
               updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
               createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -1039,7 +1121,12 @@ function App() {
               loadedTasks = (tasksJson.data.tasks || []).map(mapTask);
               setTasks(loadedTasks);
             }
-            if (servicesJson?.success) setServices((servicesJson.data.services || []).map((s:any)=>({ id: s._id, name: s.name, amount: s.amount || 0 })));
+            if (servicesJson?.success && servicesJson.data) {
+              setServices(servicesJson.data.services || []);
+            }
+            if (groupsJson?.success && groupsJson.data) {
+              setServiceGroups(groupsJson.data.groups || []);
+            }
             if (fundJson?.success) {
               const entries = (fundJson.data.entries || []) as any[];
               console.log('Fetched entries from backend:', entries);
@@ -1153,6 +1240,8 @@ function App() {
                     uploadedDocuments: t.uploadedDocuments || [],
                     remarks: t.remarks || '',
                     status: t.status || 'unassigned',
+                    groupId: t.groupId ? String(t.groupId) : undefined,
+                    isGrouped: t.isGrouped || false,
                     createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
                     updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
                     createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -1186,6 +1275,8 @@ function App() {
                     uploadedDocuments: t.uploadedDocuments || [],
                     remarks: t.remarks || '',
                     status: t.status || 'unassigned',
+                    groupId: t.groupId ? String(t.groupId) : undefined,
+                    isGrouped: t.isGrouped || false,
                     createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
                     updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
                     createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -1256,6 +1347,8 @@ function App() {
           uploadedDocuments: t.uploadedDocuments || [],
           remarks: t.remarks || '',
           status: t.status || 'unassigned',
+          groupId: t.groupId ? String(t.groupId) : undefined,
+          isGrouped: t.isGrouped || false,
           createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
           updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
           createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -1304,6 +1397,8 @@ function App() {
                 uploadedDocuments: t.uploadedDocuments || [],
                 remarks: t.remarks || '',
                 status: t.status || 'unassigned',
+                groupId: t.groupId ? String(t.groupId) : undefined,
+                isGrouped: t.isGrouped || false,
                 createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
                 updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
                 createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -1337,6 +1432,8 @@ function App() {
                 uploadedDocuments: t.uploadedDocuments || [],
                 remarks: t.remarks || '',
                 status: t.status || 'unassigned',
+                groupId: t.groupId ? String(t.groupId) : undefined,
+                isGrouped: t.isGrouped || false,
                 createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
                 updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
                 createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -1393,9 +1490,9 @@ function App() {
       case 'urgent':
         return (task: Task) => task.taskType === 'urgent' && task.status !== 'completed';
       case 'unpaid':
-        return (task: Task) => task.unpaidAmount > 0;
-      default:
-        return undefined;
+          return (task: Task) => task.unpaidAmount > 0;
+        default:
+          return undefined;
     }
   };
 
@@ -1559,6 +1656,7 @@ function App() {
               onTaskEdit={handleTaskEdit}
               onTaskDelete={handleTaskDelete}
               onAddPayment={handleAddPayment}
+              onViewGroup={handleViewGroup}
             />
           </div>
         );
@@ -1589,12 +1687,27 @@ function App() {
               onTaskEdit={handleTaskEdit}
               onTaskDelete={handleTaskDelete}
               onAddPayment={handleAddPayment}
+              onViewGroup={handleViewGroup}
             />
           </div>
         );
       case 'task-deleted':
         return (
           <DeletedTaskList token={authToken || ''} />
+        );
+      case 'services':
+        return (
+          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border-2 border-dashed border-emerald-200">
+            <Settings size={64} className="text-emerald-500 mb-4" />
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Service Management</h2>
+            <p className="text-gray-500 mb-8">Create, edit and organize your services into groups.</p>
+            <button
+              onClick={() => setIsServiceModalOpen(true)}
+              className="px-8 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg hover:shadow-emerald-200"
+            >
+              Open Service Manager
+            </button>
+          </div>
         );
       default:
         return <Placeholder title={getScreenTitle(activeScreen)} />;
@@ -1938,13 +2051,28 @@ function App() {
           setEditingTask(null);
         }}
         onSave={handleSaveTask}
+        onSaveGrouped={handleSaveGrouped}
         services={services}
+        serviceGroups={serviceGroups}
         employees={employees}
         savedTasks={dashboardData.savedTasks}
         existingCustomers={clients.map(c => c.name)}
-        onAddService={handleAddService}
+        onAddService={() => setIsServiceModalOpen(true)}
         onAddEmployee={handleAddEmployee}
         editingTask={editingTask}
+      />
+      <ServiceModal
+        isOpen={isServiceModalOpen}
+        onClose={() => setIsServiceModalOpen(false)}
+        services={services}
+        serviceGroups={serviceGroups}
+        authToken={authToken}
+        onServiceAdded={(s) => setServices(prev => [s, ...prev])}
+        onServiceUpdated={(s) => setServices(prev => prev.map(x => x._id === s._id ? s : x))}
+        onServiceDeleted={(id) => setServices(prev => prev.filter(x => x._id !== id))}
+        onGroupAdded={(g) => setServiceGroups(prev => [g, ...prev])}
+        onGroupUpdated={(g) => setServiceGroups(prev => prev.map(x => x._id === g._id ? g : x))}
+        onGroupDeleted={(id) => setServiceGroups(prev => prev.filter(x => x._id !== id))}
       />
       <AddPaymentModal
         isOpen={isPaymentModalOpen}
@@ -1954,6 +2082,16 @@ function App() {
         }}
         onSubmit={handlePaymentSubmit}
         task={selectedTaskForPayment}
+      />
+      <GroupedTaskModal
+        isOpen={isGroupedTaskModalOpen}
+        onClose={() => {
+          setIsGroupedTaskModalOpen(false);
+          setSelectedGroupId(null);
+        }}
+        groupId={selectedGroupId}
+        authToken={authToken}
+        onTasksUpdated={handleGroupTasksUpdated}
       />
     </div>
   );

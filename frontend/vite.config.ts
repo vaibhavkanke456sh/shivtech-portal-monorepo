@@ -8,7 +8,8 @@ export default defineConfig({
     exclude: ['lucide-react'],
   },
   server: {
-    port: 3000,
+    port: 3001,
+    host: '127.0.0.1',
     // Force reload on file changes
     watch: {
       usePolling: true,

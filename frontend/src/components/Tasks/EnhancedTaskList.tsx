@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Task, Service, Employee } from '../../types';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import { Edit, UserPlus, Eye, DollarSign } from 'lucide-react';
+import { Edit, UserPlus, Eye, DollarSign, Layers } from 'lucide-react';
 
 interface EnhancedTaskListProps {
   tasks: Task[];
@@ -13,6 +13,7 @@ interface EnhancedTaskListProps {
   onTaskEdit: (task: Task) => void;
   onTaskDelete: (taskId: string) => void;
   onAddPayment?: (task: Task) => void;
+  onViewGroup?: (groupId: string) => void;
 }
 
 const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({ 
@@ -24,7 +25,8 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
   onTaskUpdate,
   onTaskEdit,
   onTaskDelete,
-  onAddPayment
+  onAddPayment,
+  onViewGroup
 }) => {
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
@@ -267,7 +269,15 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div>
-                    <div className="text-sm font-medium text-gray-900">{task.serialNo}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm font-medium text-gray-900">{task.serialNo}</div>
+                      {task.isGrouped && (
+                        <span className="flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">
+                          <Layers size={10} />
+                          GROUPED
+                        </span>
+                      )}
+                    </div>
                     <div className="text-sm text-gray-500">{getServiceName(task.taskName)}</div>
                     <div className="text-xs text-gray-400">{formatDate(task.date)}</div>
                   </div>
@@ -354,6 +364,16 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                         <DollarSign size={16} />
                       </button>
                     )}
+                    {task.isGrouped && task.groupId && onViewGroup && (
+                      <button
+                        onClick={() => onViewGroup(task.groupId!)}
+                        className="flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 hover:bg-purple-200 rounded text-xs font-semibold"
+                        title="View Group"
+                      >
+                        <Layers size={12} />
+                        Group
+                      </button>
+                    )}
                     <button
                       onClick={() => onTaskEdit(task)}
                       className="text-blue-600 hover:text-blue-800 p-1"
@@ -382,6 +402,24 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                 <tr>
                   <td className="px-6 py-4 bg-gray-50" colSpan={9}>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
+                      {task.isGrouped && (
+                        <div className="md:col-span-2 flex items-center gap-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                          <span className="flex items-center gap-1 px-2 py-1 bg-purple-600 text-white rounded-full text-xs font-bold">
+                            <Layers size={12} />
+                            GROUPED TASK
+                          </span>
+                          <span className="text-purple-700 text-sm">This task is part of a group session</span>
+                          {task.groupId && onViewGroup && (
+                            <button
+                              onClick={() => onViewGroup(task.groupId!)}
+                              className="ml-auto flex items-center gap-1 px-3 py-1 bg-purple-600 text-white rounded-lg text-xs font-semibold hover:bg-purple-700"
+                            >
+                              <Layers size={12} />
+                              View Group
+                            </button>
+                          )}
+                        </div>
+                      )}
                       <div><span className="font-medium">Serial No:</span> {task.serialNo ? task.serialNo : <span className="text-red-500">No data</span>}</div>
                       <div><span className="font-medium">Date:</span> {task.date ? formatDate(task.date) : <span className="text-red-500">No data</span>}</div>
                       <div><span className="font-medium">Service:</span> {task.taskName ? getServiceName(task.taskName) : <span className="text-red-500">No data</span>} {task.taskName && <span className="text-gray-400">({task.taskName})</span>}</div>
