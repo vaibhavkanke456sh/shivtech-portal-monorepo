@@ -2009,16 +2009,7 @@ function App() {
                 </div>
               </div>
             )}
-          <div className="mt-6 text-center text-sm text-white/80">
-            <span className="text-white/90">Defaults:</span>
-            <div className="text-white/80 mt-1">
-              <button
-                type="button"
-                className="underline mr-3"
-                onClick={() => { setLoginType('developer'); setIdentifier('Shivowner_4567'); setPasswordInput('LifeQWER#$123'); }}
-              >Fill Web Developer defaults</button>
-            </div>
-          </div>
+
           </div>
         </div>
       </div>
