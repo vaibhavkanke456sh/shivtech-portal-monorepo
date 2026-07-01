@@ -81,6 +81,7 @@ export interface Task {
   status: 'service-delivered' | 'ongoing' | 'completed' | 'assigned' | 'unassigned';
   groupId?: string;
   isGrouped?: boolean;
+  sortOrder?: number;
   createdById?: string;
   updatedById?: string;
   createdByName?: string;

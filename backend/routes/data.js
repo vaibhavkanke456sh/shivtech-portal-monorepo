@@ -98,7 +98,7 @@ router.delete('/clients/:id', async (req, res) => {
 
 // Tasks
 router.get('/tasks', async (req, res) => {
-  const tasks = await Task.find({ isDeleted: false }).populate('createdBy', 'username email').populate('updatedBy', 'username email').sort({ createdAt: -1 });
+  const tasks = await Task.find({ isDeleted: false }).populate('createdBy', 'username email').populate('updatedBy', 'username email').sort({ sortOrder: -1, createdAt: -1 });
   res.json({ success: true, data: { tasks } });
 });
 

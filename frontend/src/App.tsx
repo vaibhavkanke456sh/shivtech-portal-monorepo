@@ -737,6 +737,7 @@ function App() {
           status: t.status || 'unassigned',
           groupId: t.groupId ? String(t.groupId) : undefined,
           isGrouped: t.isGrouped || false,
+          sortOrder: typeof t.sortOrder === 'number' ? t.sortOrder : undefined,
           createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
           updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
           createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -776,6 +777,7 @@ function App() {
           status: t.status || 'unassigned',
           groupId: t.groupId ? String(t.groupId) : undefined,
           isGrouped: t.isGrouped || false,
+          sortOrder: typeof t.sortOrder === 'number' ? t.sortOrder : undefined,
           createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
           updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
           createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -929,7 +931,8 @@ function App() {
           remarks: t.remarks || '',
           status: t.status,
           groupId: t.groupId ? String(t.groupId) : undefined,
-          isGrouped: t.isGrouped || false
+          isGrouped: t.isGrouped || false,
+          sortOrder: typeof t.sortOrder === 'number' ? t.sortOrder : undefined
         };
         setTasks(prev => prev.map(task => task.id === mapped.id ? mapped : task));
         return;
@@ -1109,6 +1112,7 @@ function App() {
               status: t.status || 'unassigned',
               groupId: t.groupId ? String(t.groupId) : undefined,
               isGrouped: t.isGrouped || false,
+              sortOrder: typeof t.sortOrder === 'number' ? t.sortOrder : undefined,
               createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
               updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
               createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -1242,6 +1246,7 @@ function App() {
                     status: t.status || 'unassigned',
                     groupId: t.groupId ? String(t.groupId) : undefined,
                     isGrouped: t.isGrouped || false,
+                    sortOrder: typeof t.sortOrder === 'number' ? t.sortOrder : undefined,
                     createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
                     updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
                     createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -1277,6 +1282,7 @@ function App() {
                     status: t.status || 'unassigned',
                     groupId: t.groupId ? String(t.groupId) : undefined,
                     isGrouped: t.isGrouped || false,
+                    sortOrder: typeof t.sortOrder === 'number' ? t.sortOrder : undefined,
                     createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
                     updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
                     createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -1349,6 +1355,7 @@ function App() {
           status: t.status || 'unassigned',
           groupId: t.groupId ? String(t.groupId) : undefined,
           isGrouped: t.isGrouped || false,
+          sortOrder: typeof t.sortOrder === 'number' ? t.sortOrder : undefined,
           createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
           updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
           createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -1399,6 +1406,7 @@ function App() {
                 status: t.status || 'unassigned',
                 groupId: t.groupId ? String(t.groupId) : undefined,
                 isGrouped: t.isGrouped || false,
+                sortOrder: typeof t.sortOrder === 'number' ? t.sortOrder : undefined,
                 createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
                 updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
                 createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
@@ -1434,6 +1442,7 @@ function App() {
                 status: t.status || 'unassigned',
                 groupId: t.groupId ? String(t.groupId) : undefined,
                 isGrouped: t.isGrouped || false,
+                sortOrder: typeof t.sortOrder === 'number' ? t.sortOrder : undefined,
                 createdById: typeof t.createdBy === 'object' ? (t.createdBy?._id || '') : (t.createdBy || ''),
                 updatedById: typeof t.updatedBy === 'object' ? (t.updatedBy?._id || '') : (t.updatedBy || ''),
                 createdByName: typeof t.createdBy === 'object' ? (t.createdBy?.username || t.createdBy?.email || '') : '',
