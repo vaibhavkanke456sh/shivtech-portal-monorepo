@@ -135,6 +135,52 @@ const groupStatus = (pending: number, received: number): PersonGroup['status'] =
   return 'pending';
 };
 
+/**
+ * Safe inline calculator for amount fields.
+ * Supports + - * / and parentheses. e.g. "200+400" → 600
+ */
+const evaluateAmountExpression = (
+  raw: string
+): { ok: true; value: number } | { ok: false; error: string } => {
+  const cleaned = String(raw || '')
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/×/g, '*')
+    .replace(/÷/g, '/')
+    .replace(/,/g, '');
+
+  if (!cleaned) return { ok: false, error: 'Enter an amount or expression' };
+
+  // Plain number
+  if (/^\d+(\.\d+)?$/.test(cleaned)) {
+    const n = parseFloat(cleaned);
+    if (!Number.isFinite(n)) return { ok: false, error: 'Invalid number' };
+    return { ok: true, value: Math.round(n * 100) / 100 };
+  }
+
+  // Only digits, operators, decimal points, parentheses
+  if (!/^[0-9+\-*/().]+$/.test(cleaned)) {
+    return { ok: false, error: 'Only numbers and + − × ÷ ( ) allowed' };
+  }
+
+  try {
+    // eslint-disable-next-line no-new-func
+    const result = Function(`"use strict"; return (${cleaned});`)();
+    if (typeof result !== 'number' || !Number.isFinite(result)) {
+      return { ok: false, error: 'Invalid calculation' };
+    }
+    if (result < 0) return { ok: false, error: 'Amount cannot be negative' };
+    return { ok: true, value: Math.round(result * 100) / 100 };
+  } catch {
+    return { ok: false, error: 'Invalid expression (e.g. use 200+400)' };
+  }
+};
+
+const formatCalcResult = (n: number) => {
+  if (Number.isInteger(n)) return String(n);
+  return String(Math.round(n * 100) / 100);
+};
+
 const PaymentCollect: React.FC<PaymentCollectProps> = ({ token, clients = [], onPaymentReceived }) => {
   const [entries, setEntries] = useState<PaymentCollectEntry[]>([]);
   const [summary, setSummary] = useState<Summary>({
@@ -156,6 +202,7 @@ const PaymentCollect: React.FC<PaymentCollectProps> = ({ token, clients = [], on
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState(emptyForm);
   const [addError, setAddError] = useState('');
+  const [amountCalcHint, setAmountCalcHint] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
@@ -378,8 +425,21 @@ const PaymentCollect: React.FC<PaymentCollectProps> = ({ token, clients = [], on
       phone: phone || ''
     });
     setAddError('');
+    setAmountCalcHint(null);
     setShowNameSuggestions(false);
     setShowAddModal(true);
+  };
+
+  /** Evaluate Total Amount expression → number in field (does not save). */
+  const resolveTotalAmountField = (): { ok: true; value: number } | { ok: false; error: string } => {
+    const result = evaluateAmountExpression(addForm.totalAmount);
+    if (result.ok) {
+      setAddForm((p) => ({ ...p, totalAmount: formatCalcResult(result.value) }));
+      setAmountCalcHint(null);
+      return result;
+    }
+    setAmountCalcHint(result.error);
+    return result;
   };
 
   const handleAddSubmit = async (e: React.FormEvent) => {
@@ -389,11 +449,19 @@ const PaymentCollect: React.FC<PaymentCollectProps> = ({ token, clients = [], on
       setAddError('Person name is required');
       return;
     }
-    const total = parseFloat(addForm.totalAmount);
+    const resolved = evaluateAmountExpression(addForm.totalAmount);
+    if (!resolved.ok) {
+      setAddError(resolved.error || 'Total amount must be greater than 0');
+      return;
+    }
+    const total = resolved.value;
     if (!total || total <= 0) {
       setAddError('Total amount must be greater than 0');
       return;
     }
+    // Show resolved number in the field before save
+    setAddForm((p) => ({ ...p, totalAmount: formatCalcResult(total) }));
+
     const initial = parseFloat(addForm.initialReceived) || 0;
     if (initial < 0 || initial > total) {
       setAddError('Initial received cannot exceed total amount');
@@ -552,6 +620,7 @@ const PaymentCollect: React.FC<PaymentCollectProps> = ({ token, clients = [], on
             onClick={() => {
               setAddForm(emptyForm);
               setAddError('');
+              setAmountCalcHint(null);
               setShowNameSuggestions(false);
               setShowAddModal(true);
             }}
@@ -1187,19 +1256,51 @@ const PaymentCollect: React.FC<PaymentCollectProps> = ({ token, clients = [], on
                     {existingForAddName ? 'New Amount' : 'Total Amount'} <span className="text-red-500">*</span>
                   </label>
                   <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
                     value={addForm.totalAmount}
-                    onChange={(e) => setAddForm((p) => ({ ...p, totalAmount: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                    placeholder="0.00"
+                    onChange={(e) => {
+                      setAddForm((p) => ({ ...p, totalAmount: e.target.value }));
+                      setAmountCalcHint(null);
+                    }}
+                    onKeyDown={(e) => {
+                      // Enter = calculate only, do NOT submit the form
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        resolveTotalAmountField();
+                      }
+                    }}
+                    onBlur={() => {
+                      // Resolve expression when leaving the field (if it looks like a calc)
+                      const v = addForm.totalAmount.trim();
+                      if (v && /[+\-*/×÷]/.test(v)) {
+                        resolveTotalAmountField();
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-mono"
+                    placeholder="e.g. 200+400 or 150*2"
                     required
                   />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Calculator: type <code className="bg-gray-100 px-1 rounded">200+400</code> then{' '}
+                    <kbd className="bg-gray-100 px-1 rounded border text-[10px]">Enter</kbd> → 600
+                    (also − × ÷). Does not save.
+                  </p>
+                  {amountCalcHint && (
+                    <p className="text-xs text-red-600 mt-1">{amountCalcHint}</p>
+                  )}
                   {existingForAddName && addForm.totalAmount && (
                     <p className="text-xs text-gray-500 mt-1">
                       Combined total after save:{' '}
-                      {formatCurrency(existingForAddName.totalAmount + (parseFloat(addForm.totalAmount) || 0))}
+                      {formatCurrency(
+                        existingForAddName.totalAmount +
+                          (() => {
+                            const r = evaluateAmountExpression(addForm.totalAmount);
+                            return r.ok ? r.value : 0;
+                          })()
+                      )}
                     </p>
                   )}
                 </div>
