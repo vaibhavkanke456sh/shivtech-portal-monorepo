@@ -117,57 +117,92 @@ const applyAllocationsToTasks = async (allocations, meta = {}) => {
   return updatedTasks;
 };
 
+/** Find tasks linked to a group (handles ObjectId vs string groupId storage). */
+const findTasksForGroup = async (groupId) => {
+  const idStr = String(groupId);
+  const tasks = await Task.find({
+    isDeleted: { $ne: true },
+    $or: [{ groupId: groupId }, { groupId: idStr }]
+  }).sort({ createdAt: 1 });
+  return tasks;
+};
+
 /**
  * Only when the group is fully paid: mark every linked task fully paid.
  * Does NOT redistribute partial payments (user chooses which tasks get money).
  */
-const settleFullyPaidGroupTasks = async (groupDoc) => {
+const settleFullyPaidGroupTasks = async (groupDoc, options = {}) => {
+  const force = !!options.force;
   if (!groupDoc?._id) {
-    return { group: groupDoc, tasks: [], repaired: false, tasksUpdated: 0 };
+    return { group: groupDoc, tasks: [], repaired: false, tasksUpdated: 0, reason: 'no-group' };
   }
 
   let group = groupDoc;
-  const tasks = await Task.find({ groupId: group._id, isDeleted: false }).sort({ createdAt: 1 });
-  if (!tasks.length) return { group, tasks: [], repaired: false, tasksUpdated: 0 };
+  const tasks = await findTasksForGroup(group._id);
+  if (!tasks.length) {
+    return { group, tasks: [], repaired: false, tasksUpdated: 0, reason: 'no-tasks' };
+  }
 
   const totalAmountFromTasks = round2(tasks.reduce((s, t) => s + (Number(t.finalCharges) || 0), 0));
-  // Prefer max of stored total and sum of task charges so understated totals still settle
   const totalAmount = round2(
     Math.max(Number(group.totalAmount) || 0, totalAmountFromTasks || 0)
   );
 
-  let totalPaid = round2(group.totalPaid || 0);
+  let histSum = 0;
   if (Array.isArray(group.paymentHistory) && group.paymentHistory.length > 0) {
-    const histSum = round2(group.paymentHistory.reduce((s, p) => s + (Number(p.amount) || 0), 0));
-    // Trust payment history when it is higher (legacy under-counted totalPaid)
-    if (histSum > totalPaid + 0.01 || Math.abs(histSum - totalPaid) > 0.01) {
-      totalPaid = histSum;
-    }
+    histSum = round2(group.paymentHistory.reduce((s, p) => s + (Number(p.amount) || 0), 0));
   }
-  // Cap paid at totalAmount for remaining calc
-  totalPaid = round2(Math.min(Math.max(totalPaid, 0), totalAmount > 0 ? totalAmount : totalPaid));
-  let remainingAmount = round2(Math.max((totalAmount || 0) - totalPaid, 0));
 
-  // Groups already marked fully paid in DB (remaining ~0) must settle every task,
-  // even if totalPaid/history fields are messy from legacy equal-split bugs.
-  const storedRemaining = round2(group.remainingAmount);
+  let totalPaid = round2(group.totalPaid || 0);
+  if (histSum > 0) {
+    // Prefer payment history as source of truth when present
+    totalPaid = Math.max(totalPaid, histSum);
+  }
+  totalPaid = round2(totalPaid);
+
+  const storedRemaining = Number(group.remainingAmount);
+  const storedRemainingNum = Number.isFinite(storedRemaining) ? round2(storedRemaining) : null;
+
+  // Computed remaining from totals (do not cap totalPaid down before this check)
+  let remainingAmount = totalAmount > 0 ? round2(Math.max(totalAmount - totalPaid, 0)) : null;
+
   const anyTaskUnpaid = tasks.some((t) => round2(t.unpaidAmount) > 0.01);
+  const sumTaskUnpaid = round2(tasks.reduce((s, t) => s + Math.max(0, Number(t.unpaidAmount) || 0), 0));
+
+  // Fully paid if any of these hold
   const treatAsFullyPaid =
-    remainingAmount <= 0.01 ||
-    storedRemaining <= 0.01 ||
+    force ||
+    (storedRemainingNum !== null && storedRemainingNum <= 0.01) ||
+    (remainingAmount !== null && remainingAmount <= 0.01) ||
     (totalAmount > 0 && totalPaid + 0.01 >= totalAmount) ||
-    (totalAmountFromTasks > 0 && totalPaid + 0.01 >= totalAmountFromTasks);
+    (totalAmountFromTasks > 0 && totalPaid + 0.01 >= totalAmountFromTasks) ||
+    (histSum > 0 && totalAmount > 0 && histSum + 0.01 >= totalAmount) ||
+    // UI showed Fully Paid but task unpaid left: remaining field 0 OR paid covers total
+    (anyTaskUnpaid && storedRemainingNum !== null && storedRemainingNum <= 0.01);
 
-  if (treatAsFullyPaid && totalAmount > 0) {
-    remainingAmount = 0;
-    totalPaid = totalAmount;
+  if (!treatAsFullyPaid) {
+    return {
+      group,
+      tasks,
+      repaired: false,
+      tasksUpdated: 0,
+      reason: 'not-fully-paid',
+      debug: {
+        totalAmount,
+        totalPaid,
+        histSum,
+        storedRemaining: storedRemainingNum,
+        remainingAmount,
+        anyTaskUnpaid,
+        sumTaskUnpaid,
+        taskCount: tasks.length
+      }
+    };
   }
 
-  // If group remaining is 0 but tasks still unpaid, always force settle below
-  if (storedRemaining <= 0.01 && anyTaskUnpaid && totalAmount > 0) {
-    remainingAmount = 0;
-    totalPaid = totalAmount;
-  }
+  // Normalize group to fully paid
+  remainingAmount = 0;
+  if (totalAmount > 0) totalPaid = totalAmount;
 
   if (
     Math.abs((group.totalAmount || 0) - totalAmount) > 0.01 ||
@@ -179,11 +214,6 @@ const settleFullyPaidGroupTasks = async (groupDoc) => {
       { totalAmount, totalPaid, remainingAmount },
       { new: true }
     );
-  }
-
-  // Only force-settle tasks when group is fully paid
-  if (remainingAmount > 0.01) {
-    return { group, tasks, repaired: false, tasksUpdated: 0 };
   }
 
   let repaired = false;
@@ -200,7 +230,12 @@ const settleFullyPaidGroupTasks = async (groupDoc) => {
       tasksUpdated += 1;
       const updated = await Task.findByIdAndUpdate(
         t._id,
-        { amountCollected: finalCharges, unpaidAmount: 0 },
+        {
+          amountCollected: finalCharges,
+          unpaidAmount: 0,
+          isGrouped: true,
+          groupId: group._id
+        },
         { new: true }
       )
         .populate('createdBy', 'username email')
@@ -212,53 +247,136 @@ const settleFullyPaidGroupTasks = async (groupDoc) => {
     }
   }
 
-  return { group, tasks: updatedTasks, repaired, tasksUpdated };
+  return {
+    group,
+    tasks: updatedTasks,
+    repaired,
+    tasksUpdated,
+    reason: repaired ? 'settled' : 'already-clean',
+    debug: { totalAmount, totalPaid, taskCount: tasks.length, sumTaskUnpaid }
+  };
 };
 
 /**
- * Scan all groups (+ groups with unpaid linked tasks) and settle fully paid ones.
- * Safe / idempotent — only touches fully paid groups.
+ * Scan groups + unpaid grouped tasks and settle fully paid ones.
+ * Also returns diagnostics so /health can show why nothing was repaired.
  */
 export const runFullGroupPaymentRepair = async () => {
-  const stats = { groupsChecked: 0, groupsRepaired: 0, tasksUpdated: 0 };
+  const stats = {
+    groupsChecked: 0,
+    groupsRepaired: 0,
+    tasksUpdated: 0,
+    unpaidGroupedTasksFound: 0,
+    groupsWithUnpaidTasks: 0,
+    skippedNotFullyPaid: 0,
+    skippedNoTasks: 0,
+    skippedAlreadyClean: 0,
+    sampleSkipped: []
+  };
 
-  const [allGroups, unpaidGroupedIds] = await Promise.all([
-    TaskGroup.find({}).lean(false),
-    Task.aggregate([
-      {
-        $match: {
-          isDeleted: false,
-          isGrouped: true,
-          unpaidAmount: { $gt: 0.01 },
-          groupId: { $ne: null }
-        }
-      },
-      { $group: { _id: '$groupId' } }
-    ])
-  ]);
+  // Count unpaid tasks that look grouped (isGrouped flag OR has groupId)
+  const unpaidGroupedTasks = await Task.find({
+    isDeleted: { $ne: true },
+    unpaidAmount: { $gt: 0.01 },
+    $or: [{ isGrouped: true }, { groupId: { $ne: null, $exists: true } }]
+  }).select('_id groupId unpaidAmount finalCharges serialNo taskName');
 
+  stats.unpaidGroupedTasksFound = unpaidGroupedTasks.length;
+
+  const [allGroups] = await Promise.all([TaskGroup.find({}).lean(false)]);
   const byId = new Map(allGroups.map((g) => [String(g._id), g]));
 
-  // Ensure groups that only show up via unpaid tasks are included
-  for (const row of unpaidGroupedIds) {
-    const id = String(row._id);
+  // Include every groupId referenced by unpaid tasks
+  for (const t of unpaidGroupedTasks) {
+    if (!t.groupId) continue;
+    const id = String(t.groupId);
     if (!byId.has(id)) {
-      const g = await TaskGroup.findById(row._id);
+      const g = await TaskGroup.findById(t.groupId);
       if (g) byId.set(id, g);
     }
   }
 
+  // Track groups that still have unpaid child tasks
+  const unpaidByGroup = new Map();
+  for (const t of unpaidGroupedTasks) {
+    if (!t.groupId) continue;
+    const id = String(t.groupId);
+    unpaidByGroup.set(id, (unpaidByGroup.get(id) || 0) + 1);
+  }
+  stats.groupsWithUnpaidTasks = unpaidByGroup.size;
+
   for (const group of byId.values()) {
     stats.groupsChecked += 1;
     try {
-      const result = await settleFullyPaidGroupTasks(group);
+      // Force settle when this group still has unpaid tasks AND remaining is ~0
+      const unpaidCount = unpaidByGroup.get(String(group._id)) || 0;
+      const force =
+        unpaidCount > 0 &&
+        Number.isFinite(Number(group.remainingAmount)) &&
+        Number(group.remainingAmount) <= 0.01;
+
+      const result = await settleFullyPaidGroupTasks(group, { force });
       if (result.repaired) {
         stats.groupsRepaired += 1;
         stats.tasksUpdated += result.tasksUpdated || 0;
+      } else if (result.reason === 'not-fully-paid') {
+        stats.skippedNotFullyPaid += 1;
+        if (stats.sampleSkipped.length < 5 && unpaidCount > 0) {
+          stats.sampleSkipped.push({
+            groupId: String(group._id).slice(-8),
+            unpaidTasks: unpaidCount,
+            ...result.debug
+          });
+        }
+      } else if (result.reason === 'no-tasks') {
+        stats.skippedNoTasks += 1;
+      } else if (result.reason === 'already-clean') {
+        stats.skippedAlreadyClean += 1;
       }
     } catch (err) {
       console.error(`Group payment repair failed for ${group._id}:`, err.message);
     }
+  }
+
+  // Last pass: any remaining unpaid grouped tasks whose group is fully paid
+  const stillUnpaid = await Task.find({
+    isDeleted: { $ne: true },
+    unpaidAmount: { $gt: 0.01 },
+    groupId: { $ne: null, $exists: true }
+  });
+
+  for (const t of stillUnpaid) {
+    try {
+      const group = await TaskGroup.findById(t.groupId);
+      if (!group) continue;
+      const remaining = Number(group.remainingAmount);
+      const histSum = Array.isArray(group.paymentHistory)
+        ? round2(group.paymentHistory.reduce((s, p) => s + (Number(p.amount) || 0), 0))
+        : 0;
+      const totalAmount = round2(Math.max(Number(group.totalAmount) || 0, 0));
+      const totalPaid = round2(Math.max(Number(group.totalPaid) || 0, histSum));
+      const fullyPaid =
+        (Number.isFinite(remaining) && remaining <= 0.01) ||
+        (totalAmount > 0 && totalPaid + 0.01 >= totalAmount);
+
+      if (!fullyPaid) continue;
+
+      const finalCharges = round2(t.finalCharges);
+      await Task.findByIdAndUpdate(t._id, {
+        amountCollected: finalCharges,
+        unpaidAmount: 0,
+        isGrouped: true
+      });
+      stats.tasksUpdated += 1;
+      // count group once
+    } catch (err) {
+      console.error(`Direct task settle failed for ${t._id}:`, err.message);
+    }
+  }
+
+  // Recount groups repaired from direct pass if we only updated tasks
+  if (stats.tasksUpdated > 0 && stats.groupsRepaired === 0 && unpaidByGroup.size > 0) {
+    stats.groupsRepaired = Math.min(unpaidByGroup.size, stats.tasksUpdated);
   }
 
   return stats;
