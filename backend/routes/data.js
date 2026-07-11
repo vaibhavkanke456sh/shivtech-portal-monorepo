@@ -122,22 +122,43 @@ const applyAllocationsToTasks = async (allocations, meta = {}) => {
  * Does NOT redistribute partial payments (user chooses which tasks get money).
  */
 const settleFullyPaidGroupTasks = async (groupDoc) => {
-  if (!groupDoc?._id) return { group: groupDoc, tasks: [], repaired: false };
+  if (!groupDoc?._id) {
+    return { group: groupDoc, tasks: [], repaired: false, tasksUpdated: 0 };
+  }
 
   let group = groupDoc;
   const tasks = await Task.find({ groupId: group._id, isDeleted: false }).sort({ createdAt: 1 });
-  if (!tasks.length) return { group, tasks: [], repaired: false };
+  if (!tasks.length) return { group, tasks: [], repaired: false, tasksUpdated: 0 };
 
   const totalAmountFromTasks = round2(tasks.reduce((s, t) => s + (Number(t.finalCharges) || 0), 0));
-  const totalAmount = round2(group.totalAmount || totalAmountFromTasks || 0);
+  // Prefer max of stored total and sum of task charges so understated totals still settle
+  const totalAmount = round2(
+    Math.max(Number(group.totalAmount) || 0, totalAmountFromTasks || 0)
+  );
 
   let totalPaid = round2(group.totalPaid || 0);
   if (Array.isArray(group.paymentHistory) && group.paymentHistory.length > 0) {
     const histSum = round2(group.paymentHistory.reduce((s, p) => s + (Number(p.amount) || 0), 0));
-    if (Math.abs(histSum - totalPaid) > 0.01) totalPaid = histSum;
+    // Trust payment history when it is higher (legacy under-counted totalPaid)
+    if (histSum > totalPaid + 0.01 || Math.abs(histSum - totalPaid) > 0.01) {
+      totalPaid = histSum;
+    }
   }
-  totalPaid = round2(Math.min(Math.max(totalPaid, 0), totalAmount));
-  const remainingAmount = round2(Math.max(totalAmount - totalPaid, 0));
+  // Cap paid at totalAmount for remaining calc
+  totalPaid = round2(Math.min(Math.max(totalPaid, 0), totalAmount > 0 ? totalAmount : totalPaid));
+  let remainingAmount = round2(Math.max((totalAmount || 0) - totalPaid, 0));
+
+  // Edge case: group marked remaining ~0 in DB — treat as fully paid and settle tasks
+  const storedRemaining = round2(group.remainingAmount);
+  const treatAsFullyPaid =
+    remainingAmount <= 0.01 ||
+    (storedRemaining <= 0.01 && totalAmount > 0 && totalPaid + 0.01 >= totalAmount) ||
+    (storedRemaining <= 0.01 && totalPaid > 0 && totalAmountFromTasks > 0 && totalPaid + 0.01 >= totalAmountFromTasks);
+
+  if (treatAsFullyPaid && totalAmount > 0) {
+    remainingAmount = 0;
+    totalPaid = totalAmount;
+  }
 
   if (
     Math.abs((group.totalAmount || 0) - totalAmount) > 0.01 ||
@@ -151,12 +172,13 @@ const settleFullyPaidGroupTasks = async (groupDoc) => {
     );
   }
 
-  // Only force-settle tasks when group has zero remaining
+  // Only force-settle tasks when group is fully paid
   if (remainingAmount > 0.01) {
-    return { group, tasks, repaired: false };
+    return { group, tasks, repaired: false, tasksUpdated: 0 };
   }
 
   let repaired = false;
+  let tasksUpdated = 0;
   const updatedTasks = [];
   for (const t of tasks) {
     const finalCharges = round2(t.finalCharges);
@@ -166,6 +188,7 @@ const settleFullyPaidGroupTasks = async (groupDoc) => {
 
     if (needsFix) {
       repaired = true;
+      tasksUpdated += 1;
       const updated = await Task.findByIdAndUpdate(
         t._id,
         { amountCollected: finalCharges, unpaidAmount: 0 },
@@ -180,18 +203,62 @@ const settleFullyPaidGroupTasks = async (groupDoc) => {
     }
   }
 
-  return { group, tasks: updatedTasks, repaired };
+  return { group, tasks: updatedTasks, repaired, tasksUpdated };
 };
 
-/** Repair fully-paid groups that still show task-level unpaid (legacy bug). */
-const repairFullyPaidGroupTaskUnpaid = async () => {
-  const fullyPaidGroups = await TaskGroup.find({ remainingAmount: { $lte: 0.01 } });
-  let fixed = 0;
-  for (const group of fullyPaidGroups) {
-    const result = await settleFullyPaidGroupTasks(group);
-    if (result.repaired) fixed += 1;
+/**
+ * Scan all groups (+ groups with unpaid linked tasks) and settle fully paid ones.
+ * Safe / idempotent — only touches fully paid groups.
+ */
+export const runFullGroupPaymentRepair = async () => {
+  const stats = { groupsChecked: 0, groupsRepaired: 0, tasksUpdated: 0 };
+
+  const [allGroups, unpaidGroupedIds] = await Promise.all([
+    TaskGroup.find({}).lean(false),
+    Task.aggregate([
+      {
+        $match: {
+          isDeleted: false,
+          isGrouped: true,
+          unpaidAmount: { $gt: 0.01 },
+          groupId: { $ne: null }
+        }
+      },
+      { $group: { _id: '$groupId' } }
+    ])
+  ]);
+
+  const byId = new Map(allGroups.map((g) => [String(g._id), g]));
+
+  // Ensure groups that only show up via unpaid tasks are included
+  for (const row of unpaidGroupedIds) {
+    const id = String(row._id);
+    if (!byId.has(id)) {
+      const g = await TaskGroup.findById(row._id);
+      if (g) byId.set(id, g);
+    }
   }
-  return fixed;
+
+  for (const group of byId.values()) {
+    stats.groupsChecked += 1;
+    try {
+      const result = await settleFullyPaidGroupTasks(group);
+      if (result.repaired) {
+        stats.groupsRepaired += 1;
+        stats.tasksUpdated += result.tasksUpdated || 0;
+      }
+    } catch (err) {
+      console.error(`Group payment repair failed for ${group._id}:`, err.message);
+    }
+  }
+
+  return stats;
+};
+
+/** @deprecated name kept for GET /tasks — returns groupsRepaired count */
+const repairFullyPaidGroupTaskUnpaid = async () => {
+  const stats = await runFullGroupPaymentRepair();
+  return stats.groupsRepaired;
 };
 
 // Authenticate SSE via query token (EventSource cannot set Authorization headers)
@@ -266,7 +333,10 @@ router.delete('/clients/:id', async (req, res) => {
 router.get('/tasks', async (req, res) => {
   try {
     // Fully paid groups must not leave tasks stuck in Unpaid (legacy bug repair)
-    await repairFullyPaidGroupTaskUnpaid();
+    const fixed = await repairFullyPaidGroupTaskUnpaid();
+    if (fixed > 0) {
+      console.log(`🔧 Auto-repaired ${fixed} fully paid group(s) with stuck unpaid tasks`);
+    }
   } catch (err) {
     console.error('Group payment repair failed (continuing):', err);
   }
@@ -423,6 +493,27 @@ router.get('/task-groups', async (req, res) => {
     res.json({ success: true, data: { groups } });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+/**
+ * One-shot repair for ALL fully paid groups with leftover task unpaid (legacy bug).
+ * Registered before /:id routes. Idempotent — safe after every deploy.
+ */
+router.post('/task-groups/repair-fully-paid', async (req, res) => {
+  try {
+    const stats = await runFullGroupPaymentRepair();
+    res.json({
+      success: true,
+      data: stats,
+      message:
+        stats.groupsRepaired > 0
+          ? `Repaired ${stats.groupsRepaired} fully paid group(s), updated ${stats.tasksUpdated} task(s)`
+          : `Checked ${stats.groupsChecked} group(s); nothing to repair`
+    });
+  } catch (error) {
+    console.error('Error repairing fully paid groups:', error);
+    res.status(500).json({ success: false, message: error.message || 'Repair failed' });
   }
 });
 
@@ -768,7 +859,7 @@ router.put('/task-groups/:id/add-payment', async (req, res) => {
   }
 });
 
-// Manual settle for fully paid groups
+// Manual settle for one fully paid group
 router.post('/task-groups/:id/reconcile', async (req, res) => {
   try {
     const group = await TaskGroup.findById(req.params.id);
@@ -776,7 +867,7 @@ router.post('/task-groups/:id/reconcile', async (req, res) => {
     const result = await settleFullyPaidGroupTasks(group);
     res.json({
       success: true,
-      data: { group: result.group, tasks: result.tasks },
+      data: { group: result.group, tasks: result.tasks, tasksUpdated: result.tasksUpdated },
       message: result.repaired ? 'Fully paid tasks settled' : 'No changes needed (group not fully paid or already in sync)'
     });
   } catch (error) {

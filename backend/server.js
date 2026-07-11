@@ -11,7 +11,7 @@ import { errorHandler, notFound } from './middleware/errorHandler.js';
 // Import routes
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
-import dataRoutes from './routes/data.js';
+import dataRoutes, { runFullGroupPaymentRepair } from './routes/data.js';
 import reportsRoutes from './routes/reports.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -25,8 +25,25 @@ const app = express();
 // Trust proxy for Render deployment
 app.set('trust proxy', 1);
 
-// Connect to database
-connectDB();
+// Connect to database, then heal legacy fully-paid group unpaid tasks
+const startApp = async () => {
+  await connectDB();
+  try {
+    const stats = await runFullGroupPaymentRepair();
+    if (stats.groupsRepaired > 0) {
+      console.log(
+        `🔧 Startup repair: ${stats.groupsRepaired} fully paid group(s), ${stats.tasksUpdated} task(s) cleared from unpaid`
+      );
+    } else {
+      console.log(
+        `✅ Startup group payment check: ${stats.groupsChecked} group(s), none needed repair`
+      );
+    }
+  } catch (err) {
+    console.error('Startup group payment repair failed (server continues):', err.message || err);
+  }
+};
+startApp();
 
 // Security middleware
 app.use(helmet());
