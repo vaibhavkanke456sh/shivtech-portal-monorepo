@@ -21,6 +21,7 @@ import EnhancedTaskList from './components/Tasks/EnhancedTaskList';
 import DeletedTaskList from './components/Tasks/DeletedTaskList';
 import Placeholder from './components/Placeholder';
 import Tools from './components/Tools/Tools';
+import PaymentCollect from './components/Balances/PaymentCollect';
 import { dashboardData, mockTasks, mockClients } from './data/mockData';
 import { Task, Client } from './types';
 import { apiFetch } from './utils/api';
@@ -693,6 +694,7 @@ function App() {
       'task-all': 'All Tasks',
       sales: 'Sales',
       balances: 'Balances',
+      'balances-collect': 'Collect Payments',
       client: 'Client Management',
       report: 'Reports',
       loginlinks: 'Login Links',
@@ -1629,6 +1631,27 @@ function App() {
         dashboardEntries={dashboardEntries}
         setDashboardEntries={setDashboardEntries}
       />
+        );
+      case 'balances':
+      case 'balances-collect':
+        return (
+          <PaymentCollect
+            token={authToken || ''}
+            clients={clients}
+            onPaymentReceived={(amount, paymentMode) => {
+              setBankBalances((prev) => {
+                const updated = { ...prev };
+                if (paymentMode === 'cash') {
+                  updated.cash += amount;
+                } else if (paymentMode === 'shop-qr') {
+                  updated.shopqr += amount;
+                } else if (paymentMode === 'personal-qr') {
+                  updated.vaibhav += amount;
+                }
+                return updated;
+              });
+            }}
+          />
         );
       case 'report':
         return (

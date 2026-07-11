@@ -14,6 +14,7 @@ import SalesEntry from '../models/SalesEntry.js';
 import OnlineReceivedCashGiven from '../models/OnlineReceivedCashGiven.js';
 import User from '../models/User.js';
 import TaskGroup from '../models/TaskGroup.js';
+import PaymentCollect from '../models/PaymentCollect.js';
 
 const router = express.Router();
 
@@ -516,6 +517,175 @@ router.put('/bank-cash-aeps/:id', async (req, res) => {
 router.delete('/bank-cash-aeps/:id', async (req, res) => {
   await BankCashAeps.findOneAndUpdate({ _id: req.params.id, owner: req.user._id }, { isDeleted: true, deletedAt: new Date() }, { new: true });
   res.json({ success: true });
+});
+
+// ─── Payment Collect (money to collect from persons) ───
+router.get('/payment-collects', async (req, res) => {
+  try {
+    const { status, search } = req.query;
+    const filter = { owner: req.user._id, isDeleted: false };
+    if (status && ['pending', 'partial', 'received'].includes(status)) {
+      filter.status = status;
+    }
+    if (search && String(search).trim()) {
+      const q = String(search).trim();
+      filter.$or = [
+        { personName: { $regex: q, $options: 'i' } },
+        { phone: { $regex: q, $options: 'i' } },
+        { description: { $regex: q, $options: 'i' } }
+      ];
+    }
+    const entries = await PaymentCollect.find(filter).sort({ createdAt: -1 });
+
+    const summary = {
+      totalEntries: entries.length,
+      totalAmount: entries.reduce((s, e) => s + (e.totalAmount || 0), 0),
+      totalReceived: entries.reduce((s, e) => s + (e.amountReceived || 0), 0),
+      totalPending: entries.reduce((s, e) => s + (e.pendingAmount || 0), 0),
+      pendingCount: entries.filter((e) => e.status === 'pending').length,
+      partialCount: entries.filter((e) => e.status === 'partial').length,
+      receivedCount: entries.filter((e) => e.status === 'received').length
+    };
+
+    res.json({ success: true, data: { entries, summary } });
+  } catch (error) {
+    console.error('Error fetching payment collects:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch payment collects' });
+  }
+});
+
+router.post('/payment-collects', async (req, res) => {
+  try {
+    const { personName, phone, totalAmount, description, date, initialReceived, paymentMode, paymentRemarks } = req.body;
+
+    if (!personName || !String(personName).trim()) {
+      return res.status(400).json({ success: false, message: 'Person name is required' });
+    }
+    const total = Number(totalAmount);
+    if (!total || total <= 0) {
+      return res.status(400).json({ success: false, message: 'Total amount must be greater than 0' });
+    }
+
+    const received = Math.min(Math.max(Number(initialReceived) || 0, 0), total);
+    const paymentHistory = [];
+    if (received > 0) {
+      paymentHistory.push({
+        amount: received,
+        paymentMode: paymentMode || 'cash',
+        remarks: paymentRemarks || 'Initial payment',
+        collectedAt: new Date()
+      });
+    }
+
+    const entry = await PaymentCollect.create({
+      personName: String(personName).trim(),
+      phone: phone ? String(phone).trim() : '',
+      totalAmount: total,
+      amountReceived: received,
+      description: description ? String(description).trim() : '',
+      paymentHistory,
+      date: date ? new Date(date) : new Date(),
+      owner: req.user._id
+    });
+
+    res.status(201).json({ success: true, data: { entry }, message: 'Payment collect entry created' });
+  } catch (error) {
+    console.error('Error creating payment collect:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to create entry' });
+  }
+});
+
+router.put('/payment-collects/:id', async (req, res) => {
+  try {
+    const entry = await PaymentCollect.findOne({ _id: req.params.id, owner: req.user._id, isDeleted: false });
+    if (!entry) {
+      return res.status(404).json({ success: false, message: 'Entry not found' });
+    }
+
+    const { personName, phone, totalAmount, description, date } = req.body;
+
+    if (personName !== undefined) entry.personName = String(personName).trim();
+    if (phone !== undefined) entry.phone = String(phone).trim();
+    if (description !== undefined) entry.description = String(description).trim();
+    if (date !== undefined) entry.date = new Date(date);
+    if (totalAmount !== undefined) {
+      const total = Number(totalAmount);
+      if (!total || total <= 0) {
+        return res.status(400).json({ success: false, message: 'Total amount must be greater than 0' });
+      }
+      if (total < entry.amountReceived) {
+        return res.status(400).json({
+          success: false,
+          message: `Total amount cannot be less than already received (${entry.amountReceived})`
+        });
+      }
+      entry.totalAmount = total;
+    }
+
+    await entry.save();
+    res.json({ success: true, data: { entry }, message: 'Entry updated' });
+  } catch (error) {
+    console.error('Error updating payment collect:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to update entry' });
+  }
+});
+
+router.delete('/payment-collects/:id', async (req, res) => {
+  try {
+    const entry = await PaymentCollect.findOneAndUpdate(
+      { _id: req.params.id, owner: req.user._id, isDeleted: false },
+      { isDeleted: true, deletedAt: new Date() },
+      { new: true }
+    );
+    if (!entry) {
+      return res.status(404).json({ success: false, message: 'Entry not found' });
+    }
+    res.json({ success: true, message: 'Entry deleted' });
+  } catch (error) {
+    console.error('Error deleting payment collect:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete entry' });
+  }
+});
+
+// Record a payment collection against an entry
+router.post('/payment-collects/:id/payments', async (req, res) => {
+  try {
+    const entry = await PaymentCollect.findOne({ _id: req.params.id, owner: req.user._id, isDeleted: false });
+    if (!entry) {
+      return res.status(404).json({ success: false, message: 'Entry not found' });
+    }
+
+    const amount = Number(req.body.amount);
+    const paymentMode = req.body.paymentMode || 'cash';
+    const remarks = req.body.remarks || '';
+    const collectedAt = req.body.collectedAt ? new Date(req.body.collectedAt) : new Date();
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ success: false, message: 'Payment amount must be greater than 0' });
+    }
+    if (amount > entry.pendingAmount + 0.001) {
+      return res.status(400).json({
+        success: false,
+        message: `Amount cannot exceed pending amount (${entry.pendingAmount})`
+      });
+    }
+
+    entry.paymentHistory.push({ amount, paymentMode, remarks, collectedAt });
+    entry.amountReceived = (entry.amountReceived || 0) + amount;
+    await entry.save();
+
+    res.json({
+      success: true,
+      data: { entry },
+      message:
+        entry.pendingAmount > 0
+          ? `Payment of ${amount} recorded. Pending: ${entry.pendingAmount}`
+          : `Payment of ${amount} recorded. Fully received!`
+    });
+  } catch (error) {
+    console.error('Error recording payment collect payment:', error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to record payment' });
+  }
 });
 
 // Unified Sales Entries - Get all entry types in one response
