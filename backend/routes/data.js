@@ -148,14 +148,23 @@ const settleFullyPaidGroupTasks = async (groupDoc) => {
   totalPaid = round2(Math.min(Math.max(totalPaid, 0), totalAmount > 0 ? totalAmount : totalPaid));
   let remainingAmount = round2(Math.max((totalAmount || 0) - totalPaid, 0));
 
-  // Edge case: group marked remaining ~0 in DB — treat as fully paid and settle tasks
+  // Groups already marked fully paid in DB (remaining ~0) must settle every task,
+  // even if totalPaid/history fields are messy from legacy equal-split bugs.
   const storedRemaining = round2(group.remainingAmount);
+  const anyTaskUnpaid = tasks.some((t) => round2(t.unpaidAmount) > 0.01);
   const treatAsFullyPaid =
     remainingAmount <= 0.01 ||
-    (storedRemaining <= 0.01 && totalAmount > 0 && totalPaid + 0.01 >= totalAmount) ||
-    (storedRemaining <= 0.01 && totalPaid > 0 && totalAmountFromTasks > 0 && totalPaid + 0.01 >= totalAmountFromTasks);
+    storedRemaining <= 0.01 ||
+    (totalAmount > 0 && totalPaid + 0.01 >= totalAmount) ||
+    (totalAmountFromTasks > 0 && totalPaid + 0.01 >= totalAmountFromTasks);
 
   if (treatAsFullyPaid && totalAmount > 0) {
+    remainingAmount = 0;
+    totalPaid = totalAmount;
+  }
+
+  // If group remaining is 0 but tasks still unpaid, always force settle below
+  if (storedRemaining <= 0.01 && anyTaskUnpaid && totalAmount > 0) {
     remainingAmount = 0;
     totalPaid = totalAmount;
   }

@@ -25,25 +25,8 @@ const app = express();
 // Trust proxy for Render deployment
 app.set('trust proxy', 1);
 
-// Connect to database, then heal legacy fully-paid group unpaid tasks
-const startApp = async () => {
-  await connectDB();
-  try {
-    const stats = await runFullGroupPaymentRepair();
-    if (stats.groupsRepaired > 0) {
-      console.log(
-        `🔧 Startup repair: ${stats.groupsRepaired} fully paid group(s), ${stats.tasksUpdated} task(s) cleared from unpaid`
-      );
-    } else {
-      console.log(
-        `✅ Startup group payment check: ${stats.groupsChecked} group(s), none needed repair`
-      );
-    }
-  } catch (err) {
-    console.error('Startup group payment repair failed (server continues):', err.message || err);
-  }
-};
-startApp();
+// Last startup/data repair snapshot (shown on /health for easy production checks)
+let lastGroupRepair = null;
 
 // Security middleware
 app.use(helmet());
@@ -53,7 +36,7 @@ app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
+
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:3001',
@@ -66,17 +49,17 @@ app.use(cors({
       'https://shivtech-portal-frontend-36cu8oyrm-vaibhavkanke456shs-projects.vercel.app',
       process.env.CORS_ORIGIN
     ].filter(Boolean);
-    
+
     // Check if origin matches any allowed origin
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    
+
     // Check if origin matches Vercel deployment pattern
     if (origin.match(/^https:\/\/shivtech-portal-frontend-[a-z0-9]+-vaibhavkanke456shs-projects\.vercel\.app$/)) {
       return callback(null, true);
     }
-    
+
     // Reject other origins
     const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
     return callback(new Error(msg), false);
@@ -118,7 +101,8 @@ app.get('/health', (req, res) => {
     success: true,
     message: 'DSAM Portal Backend is running',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    groupPaymentRepair: lastGroupRepair
   });
 });
 
@@ -133,7 +117,7 @@ app.get('/', (req, res) => {
   res.json({
     success: true,
     message: 'Welcome to DSAM Portal Backend API',
-    version: '1.0.0',
+    version: '1.0.1',
     endpoints: {
       auth: '/api/auth',
       admin: '/api/admin',
@@ -148,24 +132,50 @@ app.use(notFound);
 // Error handling middleware
 app.use(errorHandler);
 
-// Start server
+// Start only after Mongo is up and legacy fully-paid groups are settled
 const PORT = process.env.PORT || 5000;
 
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/health`);
-  console.log(`🔐 Auth endpoints: http://localhost:${PORT}/api/auth`);
-  console.log(`👨‍💼 Admin endpoints: http://localhost:${PORT}/api/admin`);
-});
+const boot = async () => {
+  try {
+    console.log('⏳ Connecting to MongoDB...');
+    await connectDB();
+    console.log('⏳ Running fully-paid group payment repair...');
+    try {
+      const stats = await runFullGroupPaymentRepair();
+      lastGroupRepair = {
+        ...stats,
+        ranAt: new Date().toISOString()
+      };
+      console.log(
+        `🔧 Group payment repair: checked=${stats.groupsChecked}, repaired=${stats.groupsRepaired}, tasksUpdated=${stats.tasksUpdated}`
+      );
+    } catch (err) {
+      lastGroupRepair = {
+        error: err.message || String(err),
+        ranAt: new Date().toISOString()
+      };
+      console.error('Startup group payment repair failed (server continues):', err.message || err);
+    }
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received. Shutting down gracefully...');
-  server.close(() => {
-    console.log('Process terminated');
-  });
-});
+    const server = app.listen(PORT, () => {
+      console.log(`🚀 Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+      console.log(`📊 Health check: http://localhost:${PORT}/health`);
+      console.log(`🔐 Auth endpoints: http://localhost:${PORT}/api/auth`);
+      console.log(`👨‍💼 Admin endpoints: http://localhost:${PORT}/api/admin`);
+    });
+
+    process.on('SIGTERM', () => {
+      console.log('SIGTERM received. Shutting down gracefully...');
+      server.close(() => {
+        console.log('Process terminated');
+      });
+    });
+  } catch (err) {
+    console.error('Fatal startup error:', err);
+    process.exit(1);
+  }
+};
+
+boot();
 
 export default app;
-
-
