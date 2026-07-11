@@ -29,6 +29,171 @@ const broadcastTaskEvent = (eventName, payload) => {
   }
 };
 
+// --- Group payment helpers ---
+// Payments are applied only to tasks the user selects (in order).
+// When a task's paid amount reaches Final Charges, that task is fully paid
+// and drops from unpaid — other tasks stay unpaid until selected.
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+/**
+ * Fill selected tasks in order: pay each task's unpaid until money runs out.
+ * tasksInOrder: mongoose task docs in the order chosen by the user.
+ * Returns { allocations: [{ task, amount, fullyPaid }], leftover }
+ */
+const planSequentialAllocation = (tasksInOrder, paymentAmount) => {
+  let remaining = round2(paymentAmount);
+  const allocations = [];
+
+  for (const t of tasksInOrder) {
+    if (remaining <= 0.001) break;
+    const unpaid = round2(
+      Math.max(
+        0,
+        t.unpaidAmount != null
+          ? Number(t.unpaidAmount)
+          : Number(t.finalCharges || 0) - Number(t.amountCollected || 0)
+      )
+    );
+    if (unpaid <= 0) continue;
+    const add = round2(Math.min(unpaid, remaining));
+    if (add <= 0) continue;
+    const newCollected = round2(Number(t.amountCollected || 0) + add);
+    const finalCharges = round2(t.finalCharges);
+    allocations.push({
+      task: t,
+      amount: add,
+      fullyPaid: newCollected >= finalCharges - 0.001
+    });
+    remaining = round2(remaining - add);
+  }
+
+  return { allocations, leftover: remaining };
+};
+
+/** Apply explicit per-task amounts (from sequential plan or client). */
+const applyAllocationsToTasks = async (allocations, meta = {}) => {
+  const {
+    paymentMode = 'cash',
+    paymentRemarks = '',
+    isInitialPayment = false,
+    userId = null
+  } = meta;
+
+  const updatedTasks = [];
+  for (const row of allocations) {
+    const add = round2(row.amount);
+    if (add <= 0) continue;
+    const t = row.task;
+    const finalCharges = round2(t.finalCharges);
+    const newCollected = round2(Math.min(finalCharges, Number(t.amountCollected || 0) + add));
+    const newUnpaid = round2(Math.max(finalCharges - newCollected, 0));
+
+    const updated = await Task.findByIdAndUpdate(
+      t._id,
+      {
+        amountCollected: newCollected,
+        unpaidAmount: newUnpaid,
+        updatedBy: userId || t.updatedBy,
+        $push: {
+          paymentHistory: {
+            amount: add,
+            paymentMode,
+            paymentRemarks,
+            paidAt: new Date(),
+            isInitialPayment: !!isInitialPayment
+          }
+        }
+      },
+      { new: true }
+    )
+      .populate('createdBy', 'username email')
+      .populate('updatedBy', 'username email');
+
+    if (updated) {
+      updatedTasks.push(updated);
+      broadcastTaskEvent('task_updated', { task: updated });
+    }
+  }
+  return updatedTasks;
+};
+
+/**
+ * Only when the group is fully paid: mark every linked task fully paid.
+ * Does NOT redistribute partial payments (user chooses which tasks get money).
+ */
+const settleFullyPaidGroupTasks = async (groupDoc) => {
+  if (!groupDoc?._id) return { group: groupDoc, tasks: [], repaired: false };
+
+  let group = groupDoc;
+  const tasks = await Task.find({ groupId: group._id, isDeleted: false }).sort({ createdAt: 1 });
+  if (!tasks.length) return { group, tasks: [], repaired: false };
+
+  const totalAmountFromTasks = round2(tasks.reduce((s, t) => s + (Number(t.finalCharges) || 0), 0));
+  const totalAmount = round2(group.totalAmount || totalAmountFromTasks || 0);
+
+  let totalPaid = round2(group.totalPaid || 0);
+  if (Array.isArray(group.paymentHistory) && group.paymentHistory.length > 0) {
+    const histSum = round2(group.paymentHistory.reduce((s, p) => s + (Number(p.amount) || 0), 0));
+    if (Math.abs(histSum - totalPaid) > 0.01) totalPaid = histSum;
+  }
+  totalPaid = round2(Math.min(Math.max(totalPaid, 0), totalAmount));
+  const remainingAmount = round2(Math.max(totalAmount - totalPaid, 0));
+
+  if (
+    Math.abs((group.totalAmount || 0) - totalAmount) > 0.01 ||
+    Math.abs((group.totalPaid || 0) - totalPaid) > 0.01 ||
+    Math.abs((group.remainingAmount || 0) - remainingAmount) > 0.01
+  ) {
+    group = await TaskGroup.findByIdAndUpdate(
+      group._id,
+      { totalAmount, totalPaid, remainingAmount },
+      { new: true }
+    );
+  }
+
+  // Only force-settle tasks when group has zero remaining
+  if (remainingAmount > 0.01) {
+    return { group, tasks, repaired: false };
+  }
+
+  let repaired = false;
+  const updatedTasks = [];
+  for (const t of tasks) {
+    const finalCharges = round2(t.finalCharges);
+    const needsFix =
+      Math.abs(round2(t.amountCollected) - finalCharges) > 0.01 ||
+      Math.abs(round2(t.unpaidAmount)) > 0.01;
+
+    if (needsFix) {
+      repaired = true;
+      const updated = await Task.findByIdAndUpdate(
+        t._id,
+        { amountCollected: finalCharges, unpaidAmount: 0 },
+        { new: true }
+      )
+        .populate('createdBy', 'username email')
+        .populate('updatedBy', 'username email');
+      updatedTasks.push(updated);
+      broadcastTaskEvent('task_updated', { task: updated });
+    } else {
+      updatedTasks.push(t);
+    }
+  }
+
+  return { group, tasks: updatedTasks, repaired };
+};
+
+/** Repair fully-paid groups that still show task-level unpaid (legacy bug). */
+const repairFullyPaidGroupTaskUnpaid = async () => {
+  const fullyPaidGroups = await TaskGroup.find({ remainingAmount: { $lte: 0.01 } });
+  let fixed = 0;
+  for (const group of fullyPaidGroups) {
+    const result = await settleFullyPaidGroupTasks(group);
+    if (result.repaired) fixed += 1;
+  }
+  return fixed;
+};
+
 // Authenticate SSE via query token (EventSource cannot set Authorization headers)
 router.get('/realtime/tasks', async (req, res) => {
   try {
@@ -99,6 +264,12 @@ router.delete('/clients/:id', async (req, res) => {
 
 // Tasks
 router.get('/tasks', async (req, res) => {
+  try {
+    // Fully paid groups must not leave tasks stuck in Unpaid (legacy bug repair)
+    await repairFullyPaidGroupTaskUnpaid();
+  } catch (err) {
+    console.error('Group payment repair failed (continuing):', err);
+  }
   const tasks = await Task.find({ isDeleted: false }).populate('createdBy', 'username email').populate('updatedBy', 'username email').sort({ sortOrder: -1, createdAt: -1 });
   res.json({ success: true, data: { tasks } });
 });
@@ -257,13 +428,25 @@ router.get('/task-groups', async (req, res) => {
 
 router.get('/task-groups/:id', async (req, res) => {
   try {
-    const group = await TaskGroup.findById(req.params.id);
+    let group = await TaskGroup.findById(req.params.id);
     if (!group) return res.status(404).json({ success: false, message: 'Group not found' });
+
+    // If group is fully paid, clear unpaid on every linked task (legacy repair only)
+    const settled = await settleFullyPaidGroupTasks(group);
+    group = settled.group;
+
     const tasks = await Task.find({ groupId: req.params.id, isDeleted: false })
       .populate('createdBy', 'username email')
-      .populate('updatedBy', 'username email');
-    res.json({ success: true, data: { group, tasks } });
+      .populate('updatedBy', 'username email')
+      .sort({ createdAt: 1 });
+
+    res.json({
+      success: true,
+      data: { group, tasks },
+      message: settled.repaired ? 'Fully paid group tasks cleared from unpaid' : undefined
+    });
   } catch (error) {
+    console.error('Error fetching task group:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
@@ -277,16 +460,27 @@ router.post('/task-groups', async (req, res) => {
     }
 
     const firstTask = taskPayloads[0];
-    const totalAmount = taskPayloads.reduce((sum, t) => sum + (Number(t.finalCharges) || 0), 0);
-    const totalPaid = groupPayment ? (Number(groupPayment.amountCollected) || 0) : taskPayloads.reduce((sum, t) => sum + (Number(t.amountCollected) || 0), 0);
-    const remainingAmount = Math.max(totalAmount - totalPaid, 0);
+    const totalAmount = round2(taskPayloads.reduce((sum, t) => sum + (Number(t.finalCharges) || 0), 0));
+    const totalPaid = round2(
+      groupPayment
+        ? Number(groupPayment.amountCollected) || 0
+        : taskPayloads.reduce((sum, t) => sum + (Number(t.amountCollected) || 0), 0)
+    );
+    const remainingAmount = round2(Math.max(totalAmount - totalPaid, 0));
+
+    const paymentMode = groupPayment
+      ? groupPayment.paymentMode || 'cash'
+      : firstTask.paymentMode || 'cash';
+    const paymentRemarks = groupPayment
+      ? groupPayment.paymentRemarks || ''
+      : '';
 
     const groupPaymentHistory = [];
     if (totalPaid > 0) {
       groupPaymentHistory.push({
         amount: totalPaid,
-        paymentMode: groupPayment ? (groupPayment.paymentMode || 'cash') : (firstTask.paymentMode || 'cash'),
-        paymentRemarks: groupPayment ? (groupPayment.paymentRemarks || '') : '',
+        paymentMode,
+        paymentRemarks,
         paidAt: new Date(),
         isInitialPayment: true
       });
@@ -299,17 +493,20 @@ router.post('/task-groups', async (req, res) => {
       totalAmount,
       totalPaid,
       remainingAmount,
-      paymentMode: groupPayment ? (groupPayment.paymentMode || 'cash') : (firstTask.paymentMode || 'cash'),
-      paymentNotes: groupPayment ? (groupPayment.paymentRemarks || '') : '',
+      paymentMode,
+      paymentNotes: paymentRemarks,
       paymentHistory: groupPaymentHistory,
       createdBy: req.user?._id,
       updatedBy: req.user?._id
     });
 
+    // Create tasks unpaid first, then fill selected tasks in order (or all tasks in list order)
     const createdTasks = [];
     for (const taskData of taskPayloads) {
+      const finalCharges = round2(taskData.finalCharges);
       const payload = {
         ...taskData,
+        finalCharges,
         groupId: group._id,
         isGrouped: true,
         createdBy: req.user?._id,
@@ -317,10 +514,18 @@ router.post('/task-groups', async (req, res) => {
       };
 
       if (groupPayment) {
+        // Payment is at group level — start each task unpaid, then allocate below by order
         payload.amountCollected = 0;
-        payload.unpaidAmount = Number(taskData.finalCharges) || 0;
+        payload.unpaidAmount = finalCharges;
         payload.paymentHistory = [];
+        payload.paymentMode = paymentMode;
       } else {
+        payload.amountCollected = round2(taskData.amountCollected || 0);
+        payload.unpaidAmount = round2(
+          taskData.unpaidAmount != null
+            ? taskData.unpaidAmount
+            : Math.max(finalCharges - payload.amountCollected, 0)
+        );
         if (payload.amountCollected > 0) {
           payload.paymentHistory = [{
             amount: payload.amountCollected,
@@ -336,45 +541,176 @@ router.post('/task-groups', async (req, res) => {
       if (payload.status !== 'completed') payload.completedAt = null;
 
       const task = await Task.create(payload);
-      const populated = await Task.findById(task._id).populate('createdBy', 'username email').populate('updatedBy', 'username email');
+      const populated = await Task.findById(task._id)
+        .populate('createdBy', 'username email')
+        .populate('updatedBy', 'username email');
       createdTasks.push(populated);
       broadcastTaskEvent('task_created', { task: populated });
     }
 
-    res.status(201).json({ success: true, data: { group, tasks: createdTasks } });
+    // Initial group payment: fill tasks in creation order until amount is used
+    let finalTasks = createdTasks;
+    if (groupPayment && totalPaid > 0) {
+      const plan = planSequentialAllocation(createdTasks, totalPaid);
+      await applyAllocationsToTasks(plan.allocations, {
+        paymentMode,
+        paymentRemarks,
+        isInitialPayment: true,
+        userId: req.user?._id
+      });
+      if (remainingAmount <= 0.01) {
+        await settleFullyPaidGroupTasks(group);
+      }
+      finalTasks = await Task.find({ groupId: group._id, isDeleted: false })
+        .populate('createdBy', 'username email')
+        .populate('updatedBy', 'username email');
+    }
+
+    const freshGroup = await TaskGroup.findById(group._id);
+    res.status(201).json({ success: true, data: { group: freshGroup, tasks: finalTasks } });
   } catch (error) {
     console.error('Error creating task group:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
 
+/**
+ * Add group payment and apply only to selected tasks (in order).
+ * Body:
+ *   receivedAmount, paymentMode, paymentRemarks
+ *   taskIds: string[]  — ordered list of task IDs to fill first → next
+ *   OR allocations: [{ taskId, amount }] — explicit amounts (optional override)
+ */
 router.put('/task-groups/:id/add-payment', async (req, res) => {
   try {
-    const { receivedAmount, paymentMode, paymentRemarks } = req.body;
+    const { receivedAmount, paymentMode, paymentRemarks, taskIds, allocations: clientAllocations } = req.body;
+    const amount = round2(receivedAmount);
 
-    if (!receivedAmount || receivedAmount <= 0) {
+    if (!amount || amount <= 0) {
       return res.status(400).json({ success: false, message: 'Received amount must be greater than 0' });
     }
 
-    const group = await TaskGroup.findById(req.params.id);
+    let group = await TaskGroup.findById(req.params.id);
     if (!group) return res.status(404).json({ success: false, message: 'Group not found' });
 
-    if (receivedAmount > group.remainingAmount) {
-      return res.status(400).json({ success: false, message: `Amount cannot exceed remaining balance (${group.remainingAmount})` });
+    // Sync group remaining from history if needed (does not reassign partial task paid)
+    const pre = await settleFullyPaidGroupTasks(group);
+    group = pre.group;
+
+    if (amount > round2(group.remainingAmount) + 0.001) {
+      return res.status(400).json({
+        success: false,
+        message: `Amount cannot exceed remaining balance (${group.remainingAmount})`
+      });
     }
 
-    const newTotalPaid = group.totalPaid + receivedAmount;
-    const newRemaining = Math.max(group.totalAmount - newTotalPaid, 0);
+    const groupTasks = await Task.find({ groupId: req.params.id, isDeleted: false }).sort({ createdAt: 1 });
+    const taskById = new Map(groupTasks.map((t) => [String(t._id), t]));
+
+    let planAllocations = [];
+    let leftover = 0;
+
+    if (Array.isArray(clientAllocations) && clientAllocations.length > 0) {
+      // Explicit amounts from UI
+      let remaining = amount;
+      for (const row of clientAllocations) {
+        const t = taskById.get(String(row.taskId));
+        if (!t) {
+          return res.status(400).json({ success: false, message: `Task not in group: ${row.taskId}` });
+        }
+        const want = round2(row.amount);
+        if (want <= 0) continue;
+        const unpaid = round2(Math.max(0, Number(t.unpaidAmount) || 0));
+        if (unpaid <= 0) {
+          return res.status(400).json({
+            success: false,
+            message: `Task ${t.serialNo || t.taskName} is already fully paid`
+          });
+        }
+        if (want > unpaid + 0.001) {
+          return res.status(400).json({
+            success: false,
+            message: `Amount for ${t.serialNo || t.taskName} exceeds its unpaid (${unpaid})`
+          });
+        }
+        if (want > remaining + 0.001) {
+          return res.status(400).json({
+            success: false,
+            message: 'Task allocations exceed received amount'
+          });
+        }
+        planAllocations.push({
+          task: t,
+          amount: want,
+          fullyPaid: round2(Number(t.amountCollected || 0) + want) >= round2(t.finalCharges) - 0.001
+        });
+        remaining = round2(remaining - want);
+      }
+      leftover = remaining;
+    } else {
+      // Ordered task IDs — fill unpaid sequentially
+      const ids = Array.isArray(taskIds) ? taskIds.map(String) : [];
+      if (!ids.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'Select at least one task to apply this payment to'
+        });
+      }
+
+      const ordered = [];
+      for (const id of ids) {
+        const t = taskById.get(id);
+        if (!t) {
+          return res.status(400).json({ success: false, message: `Task not in group: ${id}` });
+        }
+        ordered.push(t);
+      }
+
+      const plan = planSequentialAllocation(ordered, amount);
+      planAllocations = plan.allocations;
+      leftover = plan.leftover;
+    }
+
+    if (!planAllocations.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'No unpaid balance on selected tasks. Tick other tasks that still need payment.'
+      });
+    }
+
+    if (leftover > 0.01) {
+      return res.status(400).json({
+        success: false,
+        message: `₹${leftover} still unallocated. Tick more tasks to apply the remaining amount.`,
+        data: {
+          leftover,
+          preview: planAllocations.map((a) => ({
+            taskId: a.task._id,
+            serialNo: a.task.serialNo,
+            taskName: a.task.taskName,
+            amount: a.amount,
+            fullyPaid: a.fullyPaid
+          }))
+        }
+      });
+    }
+
+    const allocatedSum = round2(planAllocations.reduce((s, a) => s + a.amount, 0));
+    // Only credit group with what was applied to tasks (should equal amount after leftover check)
+    const appliedAmount = allocatedSum;
+
+    const newTotalPaid = round2((group.totalPaid || 0) + appliedAmount);
+    const newRemaining = round2(Math.max((group.totalAmount || 0) - newTotalPaid, 0));
 
     const newPayment = {
-      amount: receivedAmount,
+      amount: appliedAmount,
       paymentMode: paymentMode || 'cash',
       paymentRemarks: paymentRemarks || '',
       paidAt: new Date(),
       isInitialPayment: false
     };
 
-    const updatedGroup = await TaskGroup.findByIdAndUpdate(
+    let updatedGroup = await TaskGroup.findByIdAndUpdate(
       req.params.id,
       {
         totalPaid: newTotalPaid,
@@ -385,44 +721,66 @@ router.put('/task-groups/:id/add-payment', async (req, res) => {
       { new: true }
     );
 
-    const groupTasks = await Task.find({ groupId: req.params.id, isDeleted: false });
-    const taskCount = groupTasks.length;
-    const perTaskShare = taskCount > 0 ? receivedAmount / taskCount : 0;
+    await applyAllocationsToTasks(planAllocations, {
+      paymentMode: paymentMode || 'cash',
+      paymentRemarks: paymentRemarks || '',
+      isInitialPayment: false,
+      userId: req.user?._id
+    });
 
-    const updatedTasks = [];
-    for (const t of groupTasks) {
-      const addAmount = Math.min(perTaskShare, t.unpaidAmount);
-      if (addAmount > 0) {
-        const updated = await Task.findByIdAndUpdate(
-          t._id,
-          {
-            amountCollected: t.amountCollected + addAmount,
-            unpaidAmount: Math.max(t.unpaidAmount - addAmount, 0),
-            updatedBy: req.user?._id,
-            $push: {
-              paymentHistory: {
-                amount: addAmount,
-                paymentMode: paymentMode || 'cash',
-                paymentRemarks: paymentRemarks || '',
-                paidAt: new Date(),
-                isInitialPayment: false
-              }
-            }
-          },
-          { new: true }
-        ).populate('createdBy', 'username email').populate('updatedBy', 'username email');
-        updatedTasks.push(updated);
-        broadcastTaskEvent('task_updated', { task: updated });
-      }
+    // If group is fully paid, settle any leftover task unpaid
+    if (newRemaining <= 0.01) {
+      const settled = await settleFullyPaidGroupTasks(updatedGroup);
+      updatedGroup = settled.group;
     }
+
+    const finalTasks = await Task.find({ groupId: req.params.id, isDeleted: false })
+      .populate('createdBy', 'username email')
+      .populate('updatedBy', 'username email')
+      .sort({ createdAt: 1 });
+
+    const paidNames = planAllocations
+      .filter((a) => a.fullyPaid)
+      .map((a) => a.task.taskName || a.task.serialNo)
+      .join(', ');
 
     res.json({
       success: true,
-      data: { group: updatedGroup, tasks: updatedTasks },
-      message: `Group payment of ${receivedAmount} added. ${newRemaining > 0 ? `Remaining: ${newRemaining}` : 'Fully paid!'}`
+      data: {
+        group: updatedGroup,
+        tasks: finalTasks,
+        applied: planAllocations.map((a) => ({
+          taskId: a.task._id,
+          serialNo: a.task.serialNo,
+          taskName: a.task.taskName,
+          amount: a.amount,
+          fullyPaid: a.fullyPaid
+        }))
+      },
+      message:
+        newRemaining > 0.01
+          ? `Applied ₹${appliedAmount} to selected tasks.${paidNames ? ` Fully paid: ${paidNames}.` : ''} Group remaining: ₹${updatedGroup.remainingAmount}`
+          : `Group fully paid. Applied ₹${appliedAmount} to selected tasks.`
     });
   } catch (error) {
     console.error('Error adding group payment:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Manual settle for fully paid groups
+router.post('/task-groups/:id/reconcile', async (req, res) => {
+  try {
+    const group = await TaskGroup.findById(req.params.id);
+    if (!group) return res.status(404).json({ success: false, message: 'Group not found' });
+    const result = await settleFullyPaidGroupTasks(group);
+    res.json({
+      success: true,
+      data: { group: result.group, tasks: result.tasks },
+      message: result.repaired ? 'Fully paid tasks settled' : 'No changes needed (group not fully paid or already in sync)'
+    });
+  } catch (error) {
+    console.error('Error reconciling task group:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });

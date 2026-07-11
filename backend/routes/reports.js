@@ -183,10 +183,24 @@ router.get('/sales-by-staff', async (req, res) => {
 
 router.get('/accounts-receivable', async (req, res) => {
   try {
-    const unpaidTasks = await Task.find({ 
+    // Exclude grouped tasks that only look unpaid due to legacy equal-split bugs:
+    // if their TaskGroup is fully paid (remainingAmount <= 0), they are not receivable.
+    const unpaidTasksRaw = await Task.find({
       unpaidAmount: { $gt: 0 },
-      isDeleted: false 
-    }).sort({ date: -1 });
+      isDeleted: false
+    })
+      .populate('groupId', 'remainingAmount totalPaid totalAmount')
+      .sort({ date: -1 });
+
+    const unpaidTasks = unpaidTasksRaw.filter((t) => {
+      if (!t.isGrouped || !t.groupId) return true;
+      const g = t.groupId;
+      // groupId may be object when populated
+      if (g && typeof g === 'object' && Number(g.remainingAmount) <= 0.01) {
+        return false;
+      }
+      return true;
+    });
     
     const collectFromBalances = await BankCashAeps.aggregate([
       {
