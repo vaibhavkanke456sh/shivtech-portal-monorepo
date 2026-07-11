@@ -258,8 +258,82 @@ const settleFullyPaidGroupTasks = async (groupDoc, options = {}) => {
 };
 
 /**
+ * Legacy fix: money recorded on the group (totalPaid / paymentHistory) but never
+ * applied to individual tasks (equal-split bug / missing taskIds).
+ * Applies the orphan amount sequentially to unpaid tasks (oldest first).
+ * If group is fully paid, settles every task completely.
+ */
+const syncOrphanedGroupPaymentsToTasks = async (group) => {
+  const tasks = await findTasksForGroup(group._id);
+  if (!tasks.length) {
+    return { repaired: false, tasksUpdated: 0, orphan: 0, reason: 'no-tasks' };
+  }
+
+  let histSum = 0;
+  if (Array.isArray(group.paymentHistory) && group.paymentHistory.length > 0) {
+    histSum = round2(group.paymentHistory.reduce((s, p) => s + (Number(p.amount) || 0), 0));
+  }
+  const totalPaid = round2(Math.max(Number(group.totalPaid) || 0, histSum));
+  const totalAmountFromTasks = round2(tasks.reduce((s, t) => s + (Number(t.finalCharges) || 0), 0));
+  const totalAmount = round2(Math.max(Number(group.totalAmount) || 0, totalAmountFromTasks));
+  const sumCollected = round2(tasks.reduce((s, t) => s + (Number(t.amountCollected) || 0), 0));
+  const orphan = round2(Math.max(totalPaid - sumCollected, 0));
+  const storedRemaining = Number(group.remainingAmount);
+  const fullyPaid =
+    (Number.isFinite(storedRemaining) && storedRemaining <= 0.01) ||
+    (totalAmount > 0 && totalPaid + 0.01 >= totalAmount);
+
+  // Fully paid group → every task paid in full
+  if (fullyPaid) {
+    const settled = await settleFullyPaidGroupTasks(group, { force: true });
+    return {
+      repaired: settled.repaired,
+      tasksUpdated: settled.tasksUpdated || 0,
+      orphan,
+      reason: settled.repaired ? 'settled-full' : 'already-clean'
+    };
+  }
+
+  // Partial group payment never applied to tasks
+  if (orphan <= 0.01) {
+    return { repaired: false, tasksUpdated: 0, orphan: 0, reason: 'no-orphan' };
+  }
+
+  // Refresh task unpaid for allocation
+  const fresh = await findTasksForGroup(group._id);
+  const unpaidOrdered = fresh
+    .filter((t) => round2(t.unpaidAmount) > 0.01)
+    .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+
+  if (!unpaidOrdered.length) {
+    return { repaired: false, tasksUpdated: 0, orphan, reason: 'no-unpaid-tasks' };
+  }
+
+  const plan = planSequentialAllocation(unpaidOrdered, orphan);
+  if (!plan.allocations.length) {
+    return { repaired: false, tasksUpdated: 0, orphan, reason: 'alloc-empty' };
+  }
+
+  const updated = await applyAllocationsToTasks(plan.allocations, {
+    paymentMode: group.paymentMode || 'cash',
+    paymentRemarks: 'Legacy sync: group payment applied to tasks',
+    isInitialPayment: false,
+    userId: null
+  });
+
+  return {
+    repaired: updated.length > 0,
+    tasksUpdated: updated.length,
+    orphan,
+    applied: round2(plan.allocations.reduce((s, a) => s + a.amount, 0)),
+    leftover: plan.leftover,
+    reason: 'orphan-synced'
+  };
+};
+
+/**
  * Scan groups + unpaid grouped tasks and settle fully paid ones.
- * Also returns diagnostics so /health can show why nothing was repaired.
+ * Also syncs orphaned group-level payments onto tasks (legacy bug).
  */
 export const runFullGroupPaymentRepair = async () => {
   const stats = {
@@ -268,10 +342,13 @@ export const runFullGroupPaymentRepair = async () => {
     tasksUpdated: 0,
     unpaidGroupedTasksFound: 0,
     groupsWithUnpaidTasks: 0,
+    orphansSynced: 0,
+    orphanAmountApplied: 0,
     skippedNotFullyPaid: 0,
     skippedNoTasks: 0,
     skippedAlreadyClean: 0,
-    sampleSkipped: []
+    sampleSkipped: [],
+    sampleOrphans: []
   };
 
   // Count unpaid tasks that look grouped (isGrouped flag OR has groupId)
@@ -308,7 +385,7 @@ export const runFullGroupPaymentRepair = async () => {
   for (const group of byId.values()) {
     stats.groupsChecked += 1;
     try {
-      // Force settle when this group still has unpaid tasks AND remaining is ~0
+      // 1) Fully paid groups → zero all task unpaid
       const unpaidCount = unpaidByGroup.get(String(group._id)) || 0;
       const force =
         unpaidCount > 0 &&
@@ -319,7 +396,30 @@ export const runFullGroupPaymentRepair = async () => {
       if (result.repaired) {
         stats.groupsRepaired += 1;
         stats.tasksUpdated += result.tasksUpdated || 0;
-      } else if (result.reason === 'not-fully-paid') {
+        continue;
+      }
+
+      // 2) Partial payments sitting on group only → push onto tasks (legacy)
+      const orphanResult = await syncOrphanedGroupPaymentsToTasks(group);
+      if (orphanResult.repaired) {
+        stats.groupsRepaired += 1;
+        stats.tasksUpdated += orphanResult.tasksUpdated || 0;
+        stats.orphansSynced += 1;
+        stats.orphanAmountApplied = round2(
+          stats.orphanAmountApplied + (orphanResult.applied || orphanResult.orphan || 0)
+        );
+        if (stats.sampleOrphans.length < 5) {
+          stats.sampleOrphans.push({
+            groupId: String(group._id).slice(-8),
+            orphan: orphanResult.orphan,
+            applied: orphanResult.applied,
+            reason: orphanResult.reason
+          });
+        }
+        continue;
+      }
+
+      if (result.reason === 'not-fully-paid') {
         stats.skippedNotFullyPaid += 1;
         if (stats.sampleSkipped.length < 5 && unpaidCount > 0) {
           stats.sampleSkipped.push({
@@ -338,7 +438,7 @@ export const runFullGroupPaymentRepair = async () => {
     }
   }
 
-  // Last pass: any remaining unpaid grouped tasks whose group is fully paid
+  // Last pass: any remaining unpaid tasks on fully paid groups
   const stillUnpaid = await Task.find({
     isDeleted: { $ne: true },
     unpaidAmount: { $gt: 0.01 },
@@ -368,16 +468,17 @@ export const runFullGroupPaymentRepair = async () => {
         isGrouped: true
       });
       stats.tasksUpdated += 1;
-      // count group once
     } catch (err) {
       console.error(`Direct task settle failed for ${t._id}:`, err.message);
     }
   }
 
-  // Recount groups repaired from direct pass if we only updated tasks
-  if (stats.tasksUpdated > 0 && stats.groupsRepaired === 0 && unpaidByGroup.size > 0) {
-    stats.groupsRepaired = Math.min(unpaidByGroup.size, stats.tasksUpdated);
-  }
+  // Refresh unpaid count after repairs
+  stats.unpaidGroupedTasksFound = await Task.countDocuments({
+    isDeleted: { $ne: true },
+    unpaidAmount: { $gt: 0.01 },
+    $or: [{ isGrouped: true }, { groupId: { $ne: null, $exists: true } }]
+  });
 
   return stats;
 };
