@@ -8,13 +8,14 @@ const taskGroupSchema = new mongoose.Schema(
     totalAmount: { type: Number, default: 0 },
     totalPaid: { type: Number, default: 0 },
     remainingAmount: { type: Number, default: 0 },
-    paymentMode: { type: String, enum: ['cash', 'shop-qr', 'personal-qr', 'other'], default: 'cash' },
+    paymentMode: { type: String, enum: ['cash', 'shop-qr', 'personal-qr', 'other', 'discount'], default: 'cash' },
     paymentNotes: { type: String, default: '' },
+    discountAmount: { type: Number, default: 0 },
     paymentHistory: {
       type: [
         {
           amount: Number,
-          paymentMode: { type: String, enum: ['cash', 'shop-qr', 'personal-qr', 'other'], default: 'cash' },
+          paymentMode: { type: String, enum: ['cash', 'shop-qr', 'personal-qr', 'other', 'discount'], default: 'cash' },
           paymentRemarks: String,
           paidAt: { type: Date, default: Date.now },
           isInitialPayment: { type: Boolean, default: false }

@@ -12,15 +12,16 @@ const taskSchema = new mongoose.Schema(
     assignedTo: { type: String, default: '' },
     serviceCharge: { type: Number, default: 0 },
     finalCharges: { type: Number, default: 0 },
-    paymentMode: { type: String, enum: ['cash', 'shop-qr', 'personal-qr', 'other'], default: 'cash' },
+    paymentMode: { type: String, enum: ['cash', 'shop-qr', 'personal-qr', 'other', 'discount'], default: 'cash' },
     paymentRemarks: { type: String, default: '' },
     amountCollected: { type: Number, default: 0 },
     unpaidAmount: { type: Number, default: 0 },
+    discountAmount: { type: Number, default: 0 },
     paymentHistory: {
       type: [
         {
           amount: Number,
-          paymentMode: { type: String, enum: ['cash', 'shop-qr', 'personal-qr', 'other'], default: 'cash' },
+          paymentMode: { type: String, enum: ['cash', 'shop-qr', 'personal-qr', 'other', 'discount'], default: 'cash' },
           paymentRemarks: String,
           paidAt: { type: Date, default: Date.now },
           isInitialPayment: { type: Boolean, default: false }

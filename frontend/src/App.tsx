@@ -23,8 +23,18 @@ import Placeholder from './components/Placeholder';
 import Tools from './components/Tools/Tools';
 import PaymentCollect from './components/Balances/PaymentCollect';
 import { dashboardData, mockTasks, mockClients } from './data/mockData';
-import { Task, Client } from './types';
+import { Task, Client, PaymentHistoryEntry } from './types';
 import { apiFetch } from './utils/api';
+
+const mapPaymentHistory = (history: any[] | undefined): PaymentHistoryEntry[] =>
+  (history || []).map((h: any) => ({
+    id: h._id ? String(h._id) : h.id,
+    amount: h.amount || 0,
+    paymentMode: h.paymentMode || 'cash',
+    paymentRemarks: h.paymentRemarks || '',
+    paidAt: h.paidAt || '',
+    isInitialPayment: !!h.isInitialPayment
+  }));
 
 function App() {
   // Handler to update Vaibhav, Omkar, Uma balances for Fund Transfer, and add commission to Cash/SHOP QR
@@ -732,7 +742,7 @@ function App() {
           paymentRemarks: t.paymentRemarks || '',
           amountCollected: t.amountCollected || 0,
           unpaidAmount: t.unpaidAmount || 0,
-          paymentHistory: t.paymentHistory || [],
+          paymentHistory: mapPaymentHistory(t.paymentHistory),
           documentDetails: t.documentDetails || '',
           uploadedDocuments: [],
           remarks: t.remarks || '',
@@ -772,7 +782,7 @@ function App() {
           paymentRemarks: t.paymentRemarks || '',
           amountCollected: t.amountCollected || 0,
           unpaidAmount: t.unpaidAmount || 0,
-          paymentHistory: t.paymentHistory || [],
+          paymentHistory: mapPaymentHistory(t.paymentHistory),
           documentDetails: t.documentDetails || '',
           uploadedDocuments: [],
           remarks: t.remarks || '',
@@ -847,7 +857,7 @@ function App() {
         paymentRemarks: t.paymentRemarks || '',
         amountCollected: t.amountCollected || 0,
         unpaidAmount: t.unpaidAmount || 0,
-        paymentHistory: t.paymentHistory || [],
+        paymentHistory: mapPaymentHistory(t.paymentHistory),
         documentDetails: t.documentDetails || '',
         uploadedDocuments: [],
         remarks: t.remarks || '',
@@ -927,7 +937,7 @@ function App() {
           paymentRemarks: t.paymentRemarks || '',
           amountCollected: t.amountCollected || 0,
           unpaidAmount: t.unpaidAmount || 0,
-          paymentHistory: t.paymentHistory || [],
+          paymentHistory: mapPaymentHistory(t.paymentHistory),
           documentDetails: t.documentDetails || '',
           uploadedDocuments: [],
           remarks: t.remarks || '',
@@ -954,7 +964,130 @@ function App() {
     setIsPaymentModalOpen(true);
   };
 
-  const handlePaymentSubmit = async (taskId: string, receivedAmount: number, paymentMode: string, paymentRemarks?: string) => {
+  const mapApiTaskToTask = (t: any): Task => ({
+    id: t._id,
+    serialNo: t.serialNo || '',
+    date: t.date,
+    taskName: t.taskName,
+    customerName: t.customerName,
+    customerType: t.customerType,
+    serviceDeliveryDate: t.serviceDeliveryDate || '',
+    taskType: t.taskType,
+    assignedTo: t.assignedTo || '',
+    serviceCharge: t.serviceCharge || 0,
+    finalCharges: t.finalCharges || 0,
+    costOfService: t.costOfService || 0,
+    profit: t.profit || 0,
+    paymentMode: t.paymentMode || 'cash',
+    paymentRemarks: t.paymentRemarks || '',
+    amountCollected: t.amountCollected || 0,
+    unpaidAmount: t.unpaidAmount || 0,
+    discountAmount: t.discountAmount || 0,
+    paymentHistory: mapPaymentHistory(t.paymentHistory),
+    documentDetails: t.documentDetails || '',
+    uploadedDocuments: [],
+    remarks: t.remarks || '',
+    status: t.status,
+    groupId: t.groupId ? String(t.groupId) : undefined,
+    isGrouped: Boolean(t.isGrouped || t.groupId),
+    sortOrder: t.sortOrder ?? undefined,
+    createdByName: typeof t.createdBy === 'object' ? t.createdBy?.username || t.createdBy?.email || '' : '',
+    updatedByName: typeof t.updatedBy === 'object' ? t.updatedBy?.username || t.updatedBy?.email || '' : ''
+  });
+
+  const applyBankDelta = (amount: number, paymentMode: string, sign: 1 | -1) => {
+    if (amount <= 0) return;
+    setBankBalances(prev => {
+      const updated = { ...prev };
+      const delta = amount * sign;
+      if (paymentMode === 'cash') updated.cash += delta;
+      else if (paymentMode === 'shop-qr') updated.shopqr += delta;
+      else if (paymentMode === 'personal-qr') updated.vaibhav += delta;
+      return updated;
+    });
+  };
+
+  const creditBankFromPayment = (receivedAmount: number, paymentMode: string) => {
+    applyBankDelta(receivedAmount, paymentMode, 1);
+  };
+
+  const applyBalanceAdjust = (
+    adjust:
+      | {
+          remove?: { amount: number; paymentMode: string };
+          add?: { amount: number; paymentMode: string };
+          removeMany?: { amount: number; paymentMode: string }[];
+        }
+      | null
+      | undefined
+  ) => {
+    if (!adjust) return;
+    if (adjust.remove) applyBankDelta(adjust.remove.amount, adjust.remove.paymentMode, -1);
+    if (adjust.add) applyBankDelta(adjust.add.amount, adjust.add.paymentMode, 1);
+    if (Array.isArray(adjust.removeMany)) {
+      for (const row of adjust.removeMany) {
+        applyBankDelta(row.amount, row.paymentMode, -1);
+      }
+    }
+  };
+
+  const applyTaskApiResult = (json: any) => {
+    if (!json?.data?.task) return;
+    const mapped = mapApiTaskToTask(json.data.task);
+    const groupTasks: Task[] = Array.isArray(json.data.groupTasks)
+      ? json.data.groupTasks.map(mapApiTaskToTask)
+      : [];
+    const updates = groupTasks.length > 0 ? groupTasks : [mapped];
+    setTasks(prev => {
+      const byId = new Map(updates.map((t: Task) => [t.id, t]));
+      return prev.map(task => (byId.has(task.id) ? byId.get(task.id)! : task));
+    });
+    applyBalanceAdjust(json.data.balanceAdjust);
+    // Note: GroupedTaskModal reloads group via fetchGroupData so remaining stays in sync
+  };
+
+  const handleEditPaymentEntry = async (
+    taskId: string,
+    entryId: string,
+    updates: { amount: number; paymentMode: string; paymentRemarks?: string }
+  ) => {
+    const res = await apiFetch(`/api/data/tasks/${taskId}/payment-history/${entryId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+      },
+      body: JSON.stringify(updates)
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.success) {
+      throw new Error(json?.message || 'Failed to update payment entry');
+    }
+    applyTaskApiResult(json);
+  };
+
+  const handleDeletePaymentEntry = async (taskId: string, entryId: string) => {
+    const res = await apiFetch(`/api/data/tasks/${taskId}/payment-history/${entryId}`, {
+      method: 'DELETE',
+      headers: {
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+      }
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.success) {
+      throw new Error(json?.message || 'Failed to remove payment entry');
+    }
+    applyTaskApiResult(json);
+    return true;
+  };
+
+  const handlePaymentSubmit = async (
+    taskId: string,
+    receivedAmount: number,
+    paymentMode: string,
+    paymentRemarks?: string,
+    discountAmount?: number
+  ) => {
     try {
       const res = await apiFetch(`/api/data/tasks/${taskId}/add-payment`, {
         method: 'PUT',
@@ -964,6 +1097,7 @@ function App() {
         },
         body: JSON.stringify({ 
           receivedAmount, 
+          discountAmount: discountAmount || 0,
           paymentMode, 
           paymentRemarks 
         })
@@ -972,56 +1106,23 @@ function App() {
       const json = await res.json().catch(() => ({}));
       
       if (res.ok && json?.success && json?.data?.task) {
-        const t = json.data.task;
-        const mapped: Task = {
-          id: t._id,
-          serialNo: t.serialNo || '',
-          date: t.date,
-          taskName: t.taskName,
-          customerName: t.customerName,
-          customerType: t.customerType,
-          serviceDeliveryDate: t.serviceDeliveryDate || '',
-          taskType: t.taskType,
-          assignedTo: t.assignedTo || '',
-          serviceCharge: t.serviceCharge || 0,
-          finalCharges: t.finalCharges || 0,
-          paymentMode: t.paymentMode || 'cash',
-          paymentRemarks: t.paymentRemarks || '',
-          amountCollected: t.amountCollected || 0,
-          unpaidAmount: t.unpaidAmount || 0,
-          paymentHistory: t.paymentHistory || [],
-          documentDetails: t.documentDetails || '',
-          uploadedDocuments: [],
-          remarks: t.remarks || '',
-          status: t.status
-        };
-        
-        // Update dashboard balances in real-time based on payment mode
-        setBankBalances(prev => {
-          const updated = { ...prev };
-          if (paymentMode === 'cash') {
-            updated.cash += receivedAmount;
-          } else if (paymentMode === 'shop-qr') {
-            updated.shopqr += receivedAmount;
-          } else if (paymentMode === 'personal-qr') {
-            updated.vaibhav += receivedAmount;
-          }
-          return updated;
+        // Only cash/QR received credits balances — discount does not
+        creditBankFromPayment(receivedAmount, paymentMode);
+
+        const mapped = mapApiTaskToTask(json.data.task);
+        const groupTasks: Task[] = Array.isArray(json.data.groupTasks)
+          ? json.data.groupTasks.map(mapApiTaskToTask)
+          : [];
+        const updates = groupTasks.length > 0 ? groupTasks : [mapped];
+        setTasks(prev => {
+          const byId = new Map(updates.map(t => [t.id, t]));
+          return prev.map(task => (byId.has(task.id) ? byId.get(task.id)! : task));
         });
-        
-        // Update the task in the local state
-        setTasks(prev => prev.map(task => task.id === mapped.id ? mapped : task));
-        
-        // Show success message (you can implement a toast notification here)
-        console.log('Payment added successfully:', json.message);
-        
-        // Close the modal
+
         setIsPaymentModalOpen(false);
         setSelectedTaskForPayment(null);
-        
         return;
       } else {
-        // Show error message
         console.error('Failed to add payment:', json?.message || 'Unknown error');
       }
     } catch (error) {
@@ -1107,7 +1208,7 @@ function App() {
               paymentRemarks: t.paymentRemarks || '',
               amountCollected: t.amountCollected || 0,
               unpaidAmount: t.unpaidAmount || 0,
-              paymentHistory: t.paymentHistory || [],
+              paymentHistory: mapPaymentHistory(t.paymentHistory),
               documentDetails: t.documentDetails || '',
               uploadedDocuments: t.uploadedDocuments || [],
               remarks: t.remarks || '',
@@ -1241,7 +1342,7 @@ function App() {
                     paymentRemarks: t.paymentRemarks || '',
                     amountCollected: t.amountCollected || 0,
                     unpaidAmount: t.unpaidAmount || 0,
-                    paymentHistory: t.paymentHistory || [],
+                    paymentHistory: mapPaymentHistory(t.paymentHistory),
                     documentDetails: t.documentDetails || '',
                     uploadedDocuments: t.uploadedDocuments || [],
                     remarks: t.remarks || '',
@@ -1277,7 +1378,7 @@ function App() {
                     paymentRemarks: t.paymentRemarks || '',
                     amountCollected: t.amountCollected || 0,
                     unpaidAmount: t.unpaidAmount || 0,
-                    paymentHistory: t.paymentHistory || [],
+                    paymentHistory: mapPaymentHistory(t.paymentHistory),
                     documentDetails: t.documentDetails || '',
                     uploadedDocuments: t.uploadedDocuments || [],
                     remarks: t.remarks || '',
@@ -1350,7 +1451,7 @@ function App() {
           paymentRemarks: t.paymentRemarks || '',
           amountCollected: t.amountCollected || 0,
           unpaidAmount: t.unpaidAmount || 0,
-          paymentHistory: t.paymentHistory || [],
+          paymentHistory: mapPaymentHistory(t.paymentHistory),
           documentDetails: t.documentDetails || '',
           uploadedDocuments: t.uploadedDocuments || [],
           remarks: t.remarks || '',
@@ -1401,7 +1502,7 @@ function App() {
                 paymentRemarks: t.paymentRemarks || '',
                 amountCollected: t.amountCollected || 0,
                 unpaidAmount: t.unpaidAmount || 0,
-                paymentHistory: t.paymentHistory || [],
+                paymentHistory: mapPaymentHistory(t.paymentHistory),
                 documentDetails: t.documentDetails || '',
                 uploadedDocuments: t.uploadedDocuments || [],
                 remarks: t.remarks || '',
@@ -1437,7 +1538,7 @@ function App() {
                 paymentRemarks: t.paymentRemarks || '',
                 amountCollected: t.amountCollected || 0,
                 unpaidAmount: t.unpaidAmount || 0,
-                paymentHistory: t.paymentHistory || [],
+                paymentHistory: mapPaymentHistory(t.paymentHistory),
                 documentDetails: t.documentDetails || '',
                 uploadedDocuments: t.uploadedDocuments || [],
                 remarks: t.remarks || '',
@@ -1689,6 +1790,8 @@ function App() {
               onTaskDelete={handleTaskDelete}
               onAddPayment={handleAddPayment}
               onViewGroup={handleViewGroup}
+              onEditPaymentEntry={handleEditPaymentEntry}
+              onDeletePaymentEntry={handleDeletePaymentEntry}
             />
           </div>
         );
@@ -1720,6 +1823,8 @@ function App() {
               onTaskDelete={handleTaskDelete}
               onAddPayment={handleAddPayment}
               onViewGroup={handleViewGroup}
+              onEditPaymentEntry={handleEditPaymentEntry}
+              onDeletePaymentEntry={handleDeletePaymentEntry}
             />
           </div>
         );
@@ -2115,6 +2220,9 @@ function App() {
         groupId={selectedGroupId}
         authToken={authToken}
         onTasksUpdated={handleGroupTasksUpdated}
+        onCashReceived={creditBankFromPayment}
+        onEditPaymentEntry={handleEditPaymentEntry}
+        onDeletePaymentEntry={handleDeletePaymentEntry}
       />
     </div>
   );

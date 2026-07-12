@@ -49,8 +49,19 @@ export interface Service {
 }
 
 export interface PaymentHistoryEntry {
+  /** Mongo subdocument id — required for edit/delete */
+  id?: string;
   amount: number;
-  paymentMode: 'cash' | 'shop-qr' | 'personal-qr' | 'other';
+  paymentMode: 'cash' | 'shop-qr' | 'personal-qr' | 'other' | 'discount';
+  paymentRemarks?: string;
+  paidAt: string;
+  isInitialPayment: boolean;
+}
+
+export interface TaskGroupPaymentEntry {
+  id?: string;
+  amount: number;
+  paymentMode: 'cash' | 'shop-qr' | 'personal-qr' | 'other' | 'discount';
   paymentRemarks?: string;
   paidAt: string;
   isInitialPayment: boolean;
@@ -70,10 +81,12 @@ export interface Task {
   finalCharges: number;
   costOfService: number;
   profit: number;
-  paymentMode: 'cash' | 'shop-qr' | 'personal-qr' | 'other';
+  paymentMode: 'cash' | 'shop-qr' | 'personal-qr' | 'other' | 'discount';
   paymentRemarks?: string;
   amountCollected: number;
   unpaidAmount: number;
+  /** Cumulative discount applied on remaining collections */
+  discountAmount?: number;
   paymentHistory?: PaymentHistoryEntry[];
   documentDetails?: string;
   uploadedDocuments?: UploadedDocument[];
@@ -88,14 +101,6 @@ export interface Task {
   updatedByName?: string;
 }
 
-export interface TaskGroupPaymentEntry {
-  amount: number;
-  paymentMode: 'cash' | 'shop-qr' | 'personal-qr' | 'other';
-  paymentRemarks?: string;
-  paidAt: string;
-  isInitialPayment: boolean;
-}
-
 export interface TaskGroup {
   id: string;
   customerName: string;
@@ -104,7 +109,9 @@ export interface TaskGroup {
   totalAmount: number;
   totalPaid: number;
   remainingAmount: number;
-  paymentMode: 'cash' | 'shop-qr' | 'personal-qr' | 'other';
+  /** Cumulative discount applied on remaining collections */
+  discountAmount?: number;
+  paymentMode: 'cash' | 'shop-qr' | 'personal-qr' | 'other' | 'discount';
   paymentNotes?: string;
   paymentHistory?: TaskGroupPaymentEntry[];
   createdAt: string;

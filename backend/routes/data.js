@@ -110,11 +110,131 @@ const applyAllocationsToTasks = async (allocations, meta = {}) => {
       .populate('updatedBy', 'username email');
 
     if (updated) {
+      // Keep in-memory task in sync for subsequent discount/cash steps
+      t.amountCollected = newCollected;
+      t.unpaidAmount = newUnpaid;
+      t.finalCharges = finalCharges;
       updatedTasks.push(updated);
       broadcastTaskEvent('task_updated', { task: updated });
     }
   }
   return updatedTasks;
+};
+
+/**
+ * Apply discount to one task (reduces finalCharges; does NOT increase amountCollected).
+ */
+const applyDiscountToSingleTask = async (t, discountAmt, meta = {}) => {
+  const { paymentRemarks = '', userId = null } = meta;
+  const d = round2(discountAmt);
+  if (d <= 0) return null;
+
+  const unpaid = round2(
+    Math.max(
+      0,
+      t.unpaidAmount != null
+        ? Number(t.unpaidAmount)
+        : Number(t.finalCharges || 0) - Number(t.amountCollected || 0)
+    )
+  );
+  const apply = round2(Math.min(unpaid, d));
+  if (apply <= 0) return null;
+
+  const newFinal = round2(Math.max(Number(t.finalCharges || 0) - apply, 0));
+  const collected = round2(Number(t.amountCollected || 0));
+  const newUnpaid = round2(Math.max(newFinal - collected, 0));
+  const newDiscountTotal = round2(Number(t.discountAmount || 0) + apply);
+  const taskLabel = t.taskName || t.serialNo || '';
+
+  const updated = await Task.findByIdAndUpdate(
+    t._id,
+    {
+      finalCharges: newFinal,
+      unpaidAmount: newUnpaid,
+      discountAmount: newDiscountTotal,
+      updatedBy: userId || t.updatedBy,
+      $push: {
+        paymentHistory: {
+          amount: apply,
+          paymentMode: 'discount',
+          paymentRemarks: paymentRemarks
+            ? `Discount${taskLabel ? ` on ${taskLabel}` : ''}: ${paymentRemarks}`
+            : taskLabel
+              ? `Customer discount on: ${taskLabel}`
+              : 'Customer discount on remaining payment',
+          paidAt: new Date(),
+          isInitialPayment: false
+        }
+      }
+    },
+    { new: true }
+  )
+    .populate('createdBy', 'username email')
+    .populate('updatedBy', 'username email');
+
+  t.finalCharges = newFinal;
+  t.unpaidAmount = newUnpaid;
+  t.discountAmount = newDiscountTotal;
+  t.amountCollected = collected;
+
+  if (updated) broadcastTaskEvent('task_updated', { task: updated });
+  return { task: t, amount: apply, fullyPaid: newUnpaid <= 0.001, updated };
+};
+
+/**
+ * Apply discount sequentially to selected tasks (same fill order as cash).
+ * Reduces finalCharges and unpaid; does NOT increase amountCollected / bank balances.
+ * Returns { allocations, leftover, appliedTotal }
+ */
+const planAndApplyDiscountToTasks = async (tasksInOrder, discountAmount, meta = {}) => {
+  let remaining = round2(discountAmount);
+  const allocations = [];
+  const updatedTasks = [];
+
+  for (const t of tasksInOrder) {
+    if (remaining <= 0.001) break;
+    const row = await applyDiscountToSingleTask(t, remaining, meta);
+    if (!row) continue;
+    allocations.push({ task: row.task, amount: row.amount, fullyPaid: row.fullyPaid });
+    remaining = round2(remaining - row.amount);
+    if (row.updated) updatedTasks.push(row.updated);
+  }
+
+  return {
+    allocations,
+    leftover: remaining,
+    appliedTotal: round2(discountAmount - remaining),
+    updatedTasks
+  };
+};
+
+/**
+ * Apply exact per-task discount amounts: [{ task, amount }].
+ * Returns { allocations, leftover, appliedTotal }
+ */
+const applyExplicitDiscountAllocations = async (pairs, meta = {}) => {
+  const allocations = [];
+  const updatedTasks = [];
+  let requested = 0;
+  let applied = 0;
+
+  for (const { task, amount } of pairs) {
+    const want = round2(amount);
+    if (want <= 0 || !task) continue;
+    requested = round2(requested + want);
+    const row = await applyDiscountToSingleTask(task, want, meta);
+    if (!row) continue;
+    applied = round2(applied + row.amount);
+    allocations.push({ task: row.task, amount: row.amount, fullyPaid: row.fullyPaid });
+    if (row.updated) updatedTasks.push(row.updated);
+  }
+
+  return {
+    allocations,
+    leftover: round2(Math.max(0, requested - applied)),
+    appliedTotal: applied,
+    updatedTasks
+  };
 };
 
 /** Find tasks linked to a group (handles ObjectId vs string groupId storage). */
@@ -128,8 +248,43 @@ const findTasksForGroup = async (groupId) => {
 };
 
 /**
- * Only when the group is fully paid: mark every linked task fully paid.
+ * Cash-only sum of payment history.
+ * CRITICAL: discount entries must NOT count as paid cash — discount already
+ * reduced finalCharges. Counting them again falsely marks group fully paid
+ * (e.g. ₹500 cash + ₹50 discount → histSum 550 treated as money received).
+ */
+const sumCashHistory = (history = []) => {
+  if (!Array.isArray(history) || !history.length) return 0;
+  return round2(
+    history.reduce((s, p) => {
+      if ((p.paymentMode || '') === 'discount') return s;
+      return s + (Number(p.amount) || 0);
+    }, 0)
+  );
+};
+
+const sumDiscountHistory = (history = []) => {
+  if (!Array.isArray(history) || !history.length) return 0;
+  return round2(
+    history.reduce((s, p) => {
+      if ((p.paymentMode || '') !== 'discount') return s;
+      return s + (Number(p.amount) || 0);
+    }, 0)
+  );
+};
+
+/**
+ * Only when the group is fully paid *by task cash*: mark every linked task fully paid.
  * Does NOT redistribute partial payments (user chooses which tasks get money).
+ *
+ * Source of truth = linked tasks ONLY (never group.paymentHistory):
+ *   totalAmount     = sum(finalCharges)     // after discounts
+ *   totalPaid       = sum(amountCollected)  // cash only
+ *   discountAmount  = sum(task.discountAmount)
+ *   remaining       = totalAmount - totalPaid
+ *
+ * Stale group.paymentHistory must NOT re-mark a group fully paid after the user
+ * deletes task payment/discount rows (that was the ₹500+₹50 / delete bug).
  */
 const settleFullyPaidGroupTasks = async (groupDoc, options = {}) => {
   const force = !!options.force;
@@ -143,55 +298,59 @@ const settleFullyPaidGroupTasks = async (groupDoc, options = {}) => {
     return { group, tasks: [], repaired: false, tasksUpdated: 0, reason: 'no-tasks' };
   }
 
+  // Task-level truth only
   const totalAmountFromTasks = round2(tasks.reduce((s, t) => s + (Number(t.finalCharges) || 0), 0));
-  const totalAmount = round2(
-    Math.max(Number(group.totalAmount) || 0, totalAmountFromTasks || 0)
+  const totalPaidFromTasks = round2(tasks.reduce((s, t) => s + (Number(t.amountCollected) || 0), 0));
+  const discountFromTasks = round2(tasks.reduce((s, t) => s + (Number(t.discountAmount) || 0), 0));
+  const sumTaskUnpaid = round2(
+    tasks.reduce((s, t) => s + Math.max(0, Number(t.unpaidAmount) || 0), 0)
   );
+  const anyTaskUnpaid = sumTaskUnpaid > 0.01;
 
-  let histSum = 0;
-  if (Array.isArray(group.paymentHistory) && group.paymentHistory.length > 0) {
-    histSum = round2(group.paymentHistory.reduce((s, p) => s + (Number(p.amount) || 0), 0));
-  }
+  let totalAmount =
+    totalAmountFromTasks > 0 ? totalAmountFromTasks : round2(Number(group.totalAmount) || 0);
+  let totalPaid = totalPaidFromTasks;
+  let remainingAmount = round2(Math.max(totalAmount - totalPaid, 0));
+  const discountAmount = discountFromTasks;
 
-  let totalPaid = round2(group.totalPaid || 0);
-  if (histSum > 0) {
-    // Prefer payment history as source of truth when present
-    totalPaid = Math.max(totalPaid, histSum);
-  }
-  totalPaid = round2(totalPaid);
-
-  const storedRemaining = Number(group.remainingAmount);
-  const storedRemainingNum = Number.isFinite(storedRemaining) ? round2(storedRemaining) : null;
-
-  // Computed remaining from totals (do not cap totalPaid down before this check)
-  let remainingAmount = totalAmount > 0 ? round2(Math.max(totalAmount - totalPaid, 0)) : null;
-
-  const anyTaskUnpaid = tasks.some((t) => round2(t.unpaidAmount) > 0.01);
-  const sumTaskUnpaid = round2(tasks.reduce((s, t) => s + Math.max(0, Number(t.unpaidAmount) || 0), 0));
-
-  // Fully paid if any of these hold
+  // Fully paid only when tasks' cash covers tasks' final charges
   const treatAsFullyPaid =
     force ||
-    (storedRemainingNum !== null && storedRemainingNum <= 0.01) ||
-    (remainingAmount !== null && remainingAmount <= 0.01) ||
-    (totalAmount > 0 && totalPaid + 0.01 >= totalAmount) ||
-    (totalAmountFromTasks > 0 && totalPaid + 0.01 >= totalAmountFromTasks) ||
-    (histSum > 0 && totalAmount > 0 && histSum + 0.01 >= totalAmount) ||
-    // UI showed Fully Paid but task unpaid left: remaining field 0 OR paid covers total
-    (anyTaskUnpaid && storedRemainingNum !== null && storedRemainingNum <= 0.01);
+    remainingAmount <= 0.01 ||
+    (totalAmount > 0 && totalPaid + 0.01 >= totalAmount);
+
+  // Always keep group summary fields aligned with tasks (including discount reset to 0)
+  const needsSync =
+    Math.abs((group.totalAmount || 0) - totalAmount) > 0.01 ||
+    Math.abs((group.totalPaid || 0) - totalPaid) > 0.01 ||
+    Math.abs((group.remainingAmount || 0) - remainingAmount) > 0.01 ||
+    Math.abs((group.discountAmount || 0) - discountAmount) > 0.01;
 
   if (!treatAsFullyPaid) {
+    if (needsSync) {
+      group = await TaskGroup.findByIdAndUpdate(
+        group._id,
+        {
+          totalAmount,
+          totalPaid,
+          remainingAmount,
+          discountAmount,
+          updatedBy: options.userId || undefined
+        },
+        { new: true }
+      );
+    }
+
     return {
       group,
       tasks,
-      repaired: false,
+      repaired: needsSync,
       tasksUpdated: 0,
       reason: 'not-fully-paid',
       debug: {
         totalAmount,
         totalPaid,
-        histSum,
-        storedRemaining: storedRemainingNum,
+        discountAmount,
         remainingAmount,
         anyTaskUnpaid,
         sumTaskUnpaid,
@@ -200,18 +359,24 @@ const settleFullyPaidGroupTasks = async (groupDoc, options = {}) => {
     };
   }
 
-  // Normalize group to fully paid
+  // Normalize group to fully paid from task truth
   remainingAmount = 0;
-  if (totalAmount > 0) totalPaid = totalAmount;
+  totalPaid = totalAmount;
 
   if (
     Math.abs((group.totalAmount || 0) - totalAmount) > 0.01 ||
     Math.abs((group.totalPaid || 0) - totalPaid) > 0.01 ||
-    Math.abs((group.remainingAmount || 0) - remainingAmount) > 0.01
+    Math.abs((group.remainingAmount || 0) - remainingAmount) > 0.01 ||
+    Math.abs((group.discountAmount || 0) - discountAmount) > 0.01
   ) {
     group = await TaskGroup.findByIdAndUpdate(
       group._id,
-      { totalAmount, totalPaid, remainingAmount },
+      {
+        totalAmount,
+        totalPaid,
+        remainingAmount,
+        discountAmount
+      },
       { new: true }
     );
   }
@@ -253,7 +418,7 @@ const settleFullyPaidGroupTasks = async (groupDoc, options = {}) => {
     repaired,
     tasksUpdated,
     reason: repaired ? 'settled' : 'already-clean',
-    debug: { totalAmount, totalPaid, taskCount: tasks.length, sumTaskUnpaid }
+    debug: { totalAmount, totalPaid, discountAmount, taskCount: tasks.length, sumTaskUnpaid }
   };
 };
 
@@ -269,19 +434,25 @@ const syncOrphanedGroupPaymentsToTasks = async (group) => {
     return { repaired: false, tasksUpdated: 0, orphan: 0, reason: 'no-tasks' };
   }
 
-  let histSum = 0;
-  if (Array.isArray(group.paymentHistory) && group.paymentHistory.length > 0) {
-    histSum = round2(group.paymentHistory.reduce((s, p) => s + (Number(p.amount) || 0), 0));
-  }
+  // Cash only — discount must not inflate "paid" / orphan math
+  const histSum = sumCashHistory(group.paymentHistory);
   const totalPaid = round2(Math.max(Number(group.totalPaid) || 0, histSum));
   const totalAmountFromTasks = round2(tasks.reduce((s, t) => s + (Number(t.finalCharges) || 0), 0));
-  const totalAmount = round2(Math.max(Number(group.totalAmount) || 0, totalAmountFromTasks));
+  const totalAmount = round2(
+    totalAmountFromTasks > 0
+      ? totalAmountFromTasks
+      : Math.max(Number(group.totalAmount) || 0, 0)
+  );
   const sumCollected = round2(tasks.reduce((s, t) => s + (Number(t.amountCollected) || 0), 0));
   const orphan = round2(Math.max(totalPaid - sumCollected, 0));
   const storedRemaining = Number(group.remainingAmount);
   const fullyPaid =
-    (Number.isFinite(storedRemaining) && storedRemaining <= 0.01) ||
-    (totalAmount > 0 && totalPaid + 0.01 >= totalAmount);
+    (totalAmount > 0 && sumCollected + 0.01 >= totalAmount) ||
+    (totalAmount > 0 && totalPaid + 0.01 >= totalAmount && orphan <= 0.01) ||
+    (Number.isFinite(storedRemaining) &&
+      storedRemaining <= 0.01 &&
+      totalAmount > 0 &&
+      sumCollected + 0.01 >= totalAmount);
 
   // Fully paid group → every task paid in full
   if (fullyPaid) {
@@ -449,15 +620,12 @@ export const runFullGroupPaymentRepair = async () => {
     try {
       const group = await TaskGroup.findById(t.groupId);
       if (!group) continue;
-      const remaining = Number(group.remainingAmount);
-      const histSum = Array.isArray(group.paymentHistory)
-        ? round2(group.paymentHistory.reduce((s, p) => s + (Number(p.amount) || 0), 0))
-        : 0;
-      const totalAmount = round2(Math.max(Number(group.totalAmount) || 0, 0));
-      const totalPaid = round2(Math.max(Number(group.totalPaid) || 0, histSum));
-      const fullyPaid =
-        (Number.isFinite(remaining) && remaining <= 0.01) ||
-        (totalAmount > 0 && totalPaid + 0.01 >= totalAmount);
+      // Recompute from all linked tasks — never treat discount history as cash
+      const linked = await findTasksForGroup(group._id);
+      const totalAmount = round2(linked.reduce((s, x) => s + (Number(x.finalCharges) || 0), 0));
+      const totalPaid = round2(linked.reduce((s, x) => s + (Number(x.amountCollected) || 0), 0));
+      const remaining = round2(Math.max(totalAmount - totalPaid, 0));
+      const fullyPaid = totalAmount > 0 && remaining <= 0.01;
 
       if (!fullyPaid) continue;
 
@@ -639,77 +807,610 @@ router.put('/tasks/:id/restore', async (req, res) => {
   res.json({ success: true, data: { task } });
 });
 
-// Add remaining payment to a task
+/** Sum cash vs discount in payment history */
+const sumHistoryParts = (history = []) => {
+  let cash = 0;
+  let discount = 0;
+  for (const h of history) {
+    const a = round2(h.amount);
+    if ((h.paymentMode || '') === 'discount') discount = round2(discount + a);
+    else cash = round2(cash + a);
+  }
+  return { cash, discount };
+};
+
+/**
+ * Original bill before discounts currently recorded in history:
+ * finalCharges has already been reduced by those discounts.
+ */
+const originalFinalFromTask = (task) => {
+  const { discount } = sumHistoryParts(task.paymentHistory || []);
+  return round2(Number(task.finalCharges || 0) + discount);
+};
+
+/**
+ * After history mutation, recompute amountCollected / finalCharges / unpaid / discountAmount.
+ * originalFinal = bill before any discounts in the (new) history set.
+ *
+ * options.autoTrimCash: when increasing discount leaves cash > new final charges,
+ * reduce newest cash history rows so cash fits (and return cashTrimmed for bank reverse).
+ */
+const applyHistoryRecompute = (task, originalFinal, options = {}) => {
+  const { autoTrimCash = false } = options;
+  let { cash, discount } = sumHistoryParts(task.paymentHistory || []);
+  let finalCharges = round2(Math.max(originalFinal - discount, 0));
+  const cashTrimmed = []; // [{ amount, paymentMode }] excess cash removed
+
+  if (cash > finalCharges + 0.001) {
+    if (!autoTrimCash) {
+      const maxDiscountWithCurrentCash = round2(Math.max(originalFinal - cash, 0));
+      return {
+        error:
+          `Cash collected (₹${cash}) would exceed final charges after discount (₹${finalCharges}). ` +
+          `With this cash, max discount is ₹${maxDiscountWithCurrentCash}. ` +
+          `Reduce a cash entry first, or lower the discount.`
+      };
+    }
+
+    // Trim cash from newest non-discount entries until cash <= finalCharges
+    let excess = round2(cash - finalCharges);
+    const hist = Array.isArray(task.paymentHistory) ? [...task.paymentHistory] : [];
+    // Walk from end (newest) to start
+    for (let i = hist.length - 1; i >= 0 && excess > 0.001; i--) {
+      const h = hist[i];
+      if ((h.paymentMode || '') === 'discount') continue;
+      const amt = round2(h.amount);
+      if (amt <= 0) continue;
+      const cut = round2(Math.min(amt, excess));
+      if (cut <= 0) continue;
+      const mode = h.paymentMode || 'cash';
+      cashTrimmed.push({ amount: cut, paymentMode: mode });
+      const left = round2(amt - cut);
+      if (left <= 0.001) {
+        hist.splice(i, 1);
+      } else {
+        h.amount = left;
+      }
+      excess = round2(excess - cut);
+    }
+
+    task.paymentHistory = hist;
+    task.markModified('paymentHistory');
+    ({ cash, discount } = sumHistoryParts(hist));
+    finalCharges = round2(Math.max(originalFinal - discount, 0));
+
+    if (cash > finalCharges + 0.001) {
+      return {
+        error: `Could not fit cash (₹${cash}) under final charges (₹${finalCharges}) after discount`
+      };
+    }
+  }
+
+  task.finalCharges = finalCharges;
+  task.amountCollected = cash;
+  task.discountAmount = discount;
+  task.unpaidAmount = round2(Math.max(finalCharges - cash, 0));
+  return { cash, discount, finalCharges, cashTrimmed };
+};
+
+/**
+ * Align one task's amountCollected / finalCharges / unpaid / discountAmount
+ * with its own paymentHistory (cash vs discount).
+ * Fixes force-settled tasks that still show Paid after history was deleted.
+ */
+const recomputeTaskFromItsHistory = async (taskDoc, userId = null) => {
+  if (!taskDoc?._id) return taskDoc;
+  const history = Array.isArray(taskDoc.paymentHistory) ? taskDoc.paymentHistory : [];
+  const { cash, discount } = sumHistoryParts(history);
+  // Bill before discounts currently on this task
+  const originalFinal = round2(Number(taskDoc.finalCharges || 0) + discount);
+  // If force-settled above history (collected > cash), trust history cash only
+  const finalCharges = round2(Math.max(originalFinal - discount, 0));
+  const amountCollected = cash;
+  const unpaidAmount = round2(Math.max(finalCharges - amountCollected, 0));
+  const discountAmount = discount;
+
+  const drifted =
+    Math.abs(round2(taskDoc.finalCharges) - finalCharges) > 0.01 ||
+    Math.abs(round2(taskDoc.amountCollected) - amountCollected) > 0.01 ||
+    Math.abs(round2(taskDoc.unpaidAmount) - unpaidAmount) > 0.01 ||
+    Math.abs(round2(taskDoc.discountAmount || 0) - discountAmount) > 0.01;
+
+  if (!drifted) return taskDoc;
+
+  const updated = await Task.findByIdAndUpdate(
+    taskDoc._id,
+    {
+      finalCharges,
+      amountCollected,
+      unpaidAmount,
+      discountAmount,
+      updatedBy: userId || undefined
+    },
+    { new: true }
+  );
+  if (updated) broadcastTaskEvent('task_updated', { task: updated });
+  return updated || taskDoc;
+};
+
+/**
+ * Recompute group totals + rebuild group.paymentHistory from linked tasks.
+ * Tasks are source of truth after edit/delete/add of cash or discount rows.
+ *
+ * remainingAmount = sum(task.unpaidAmount)  [= totalAmount - totalPaid when fields consistent]
+ * discountAmount  = sum(task.discountAmount)  (can go back to 0)
+ */
+const syncGroupTotalsFromTasks = async (groupId, userId = null) => {
+  if (!groupId) return { group: null, tasks: [] };
+  const group = await TaskGroup.findById(groupId);
+  if (!group) return { group: null, tasks: [] };
+  let groupTasks = await findTasksForGroup(group._id);
+
+  // Align each task to its own payment history first
+  const realigned = [];
+  for (const t of groupTasks) {
+    realigned.push(await recomputeTaskFromItsHistory(t, userId));
+  }
+  groupTasks = realigned;
+
+  // Refresh from DB so we have latest paymentHistory + fields
+  groupTasks = await findTasksForGroup(group._id);
+
+  const totalAmount = round2(groupTasks.reduce((s, t) => s + (Number(t.finalCharges) || 0), 0));
+  const totalPaid = round2(groupTasks.reduce((s, t) => s + (Number(t.amountCollected) || 0), 0));
+  // Prefer sum of per-task unpaid (source of remaining balance UI)
+  const remainingFromUnpaid = round2(
+    groupTasks.reduce((s, t) => s + Math.max(0, Number(t.unpaidAmount) || 0), 0)
+  );
+  const remainingFromTotals = round2(Math.max(totalAmount - totalPaid, 0));
+  // If fields drifted, force unpaid to match totals on each task below; store consistent remaining
+  let remainingAmount = remainingFromUnpaid;
+  if (Math.abs(remainingFromUnpaid - remainingFromTotals) > 0.02) {
+    // Heal per-task unpaid from final - collected
+    for (const t of groupTasks) {
+      const fc = round2(t.finalCharges);
+      const ac = round2(t.amountCollected);
+      const up = round2(Math.max(fc - ac, 0));
+      if (Math.abs(round2(t.unpaidAmount) - up) > 0.01) {
+        await Task.findByIdAndUpdate(t._id, { unpaidAmount: up });
+        t.unpaidAmount = up;
+      }
+    }
+    remainingAmount = round2(
+      groupTasks.reduce((s, t) => s + Math.max(0, Number(t.unpaidAmount) || 0), 0)
+    );
+  }
+
+  const discountAmount = round2(
+    groupTasks.reduce((s, t) => s + (Number(t.discountAmount) || 0), 0)
+  );
+
+  // Rebuild group history from task histories (stays in sync after edit/delete)
+  const paymentHistory = [];
+  for (const t of groupTasks) {
+    const label = t.serialNo || t.taskName || '';
+    for (const h of t.paymentHistory || []) {
+      const mode = h.paymentMode || 'cash';
+      let remarks = h.paymentRemarks || '';
+      if (!remarks && label) {
+        remarks = mode === 'discount' ? `Discount on ${label}` : `Payment on ${label}`;
+      }
+      paymentHistory.push({
+        amount: round2(h.amount),
+        paymentMode: mode,
+        paymentRemarks: remarks,
+        paidAt: h.paidAt || new Date(),
+        isInitialPayment: !!h.isInitialPayment
+      });
+    }
+  }
+  paymentHistory.sort((a, b) => new Date(a.paidAt) - new Date(b.paidAt));
+
+  let updated = await TaskGroup.findByIdAndUpdate(
+    group._id,
+    {
+      totalAmount,
+      totalPaid,
+      remainingAmount,
+      discountAmount,
+      paymentHistory,
+      updatedBy: userId || undefined
+    },
+    { new: true }
+  );
+
+  // Only force leftover unpaid→paid when every task is fully cash-paid
+  if (remainingAmount <= 0.01 && totalAmount > 0 && totalPaid + 0.01 >= totalAmount) {
+    const settled = await settleFullyPaidGroupTasks(updated);
+    updated = settled.group;
+    groupTasks = settled.tasks?.length ? settled.tasks : await findTasksForGroup(group._id);
+  } else {
+    groupTasks = await findTasksForGroup(group._id);
+  }
+
+  const populatedTasks = await Task.find({ _id: { $in: groupTasks.map((t) => t._id) } })
+    .populate('createdBy', 'username email')
+    .populate('updatedBy', 'username email')
+    .sort({ createdAt: 1 });
+
+  return { group: updated, tasks: populatedTasks };
+};
+
+const findPaymentHistoryEntry = (task, entryId) => {
+  const history = task.paymentHistory || [];
+  const entry = history.id(entryId);
+  if (entry) return entry;
+  // Fallback: match by string id
+  return history.find((h) => String(h._id) === String(entryId)) || null;
+};
+
+// Edit a cash or discount entry in task payment history
+router.put('/tasks/:id/payment-history/:entryId', async (req, res) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Task not found' });
+    }
+
+    const entry = findPaymentHistoryEntry(task, req.params.entryId);
+    if (!entry) {
+      return res.status(404).json({ success: false, message: 'Payment entry not found' });
+    }
+
+    const originalFinal = originalFinalFromTask(task);
+    const oldAmount = round2(entry.amount);
+    const oldMode = entry.paymentMode || 'cash';
+    const isDiscount = oldMode === 'discount';
+
+    const newAmount = round2(
+      req.body.amount != null ? req.body.amount : oldAmount
+    );
+    if (newAmount <= 0) {
+      return res.status(400).json({ success: false, message: 'Amount must be greater than 0' });
+    }
+
+    let newMode = oldMode;
+    if (!isDiscount && req.body.paymentMode) {
+      const allowed = ['cash', 'shop-qr', 'personal-qr', 'other'];
+      if (!allowed.includes(req.body.paymentMode)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid payment mode (cannot change discount to cash here)'
+        });
+      }
+      newMode = req.body.paymentMode;
+    }
+    // Discount entries stay discount; cash cannot become discount via edit
+    if (isDiscount) newMode = 'discount';
+
+    entry.amount = newAmount;
+    entry.paymentMode = newMode;
+    if (req.body.paymentRemarks != null) {
+      entry.paymentRemarks = String(req.body.paymentRemarks);
+    }
+    task.markModified('paymentHistory');
+
+    // Increasing discount may require auto-reducing cash so cash ≤ new final charges
+    const recomputed = applyHistoryRecompute(task, originalFinal, {
+      autoTrimCash: isDiscount
+    });
+    if (recomputed.error) {
+      return res.status(400).json({ success: false, message: recomputed.error });
+    }
+
+    task.updatedBy = req.user?._id;
+    await task.save();
+
+    let populated = await Task.findById(task._id)
+      .populate('createdBy', 'username email')
+      .populate('updatedBy', 'username email');
+
+    let groupDoc = null;
+    let groupTasks = null;
+    if (populated.groupId) {
+      try {
+        const synced = await syncGroupTotalsFromTasks(populated.groupId, req.user?._id);
+        groupDoc = synced.group;
+        groupTasks = synced.tasks;
+        // Prefer refreshed version of this task from group list
+        if (groupTasks?.length) {
+          const refreshed = groupTasks.find((t) => String(t._id) === String(populated._id));
+          if (refreshed) populated = refreshed;
+        }
+      } catch (e) {
+        console.error('Group sync after payment edit:', e);
+      }
+    }
+
+    broadcastTaskEvent('task_payment_edited', { task: populated });
+
+    // Bank balance: reverse any auto-trimmed cash; for cash edits use remove old + add new
+    let balanceAdjust = null;
+    if (isDiscount) {
+      const trimmed = recomputed.cashTrimmed || [];
+      if (trimmed.length) {
+        const byMode = {};
+        for (const row of trimmed) {
+          const m = row.paymentMode || 'cash';
+          byMode[m] = round2((byMode[m] || 0) + row.amount);
+        }
+        balanceAdjust = {
+          removeMany: Object.entries(byMode).map(([paymentMode, amount]) => ({
+            paymentMode,
+            amount
+          }))
+        };
+      }
+    } else {
+      balanceAdjust = {
+        remove: { amount: oldAmount, paymentMode: oldMode },
+        add: { amount: newAmount, paymentMode: newMode }
+      };
+    }
+
+    const trimTotal = round2(
+      (recomputed.cashTrimmed || []).reduce((s, r) => s + (Number(r.amount) || 0), 0)
+    );
+    let message = isDiscount
+      ? `Discount entry updated to ₹${newAmount}`
+      : `Payment entry updated to ₹${newAmount}`;
+    if (trimTotal > 0.001) {
+      message += `. Cash reduced by ₹${trimTotal} so it fits final charges after discount (₹${recomputed.finalCharges})`;
+    }
+    if (groupDoc) {
+      message += `. Group remaining: ₹${round2(groupDoc.remainingAmount)}`;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        task: populated,
+        ...(groupDoc ? { group: groupDoc } : {}),
+        ...(groupTasks ? { groupTasks } : {}),
+        balanceAdjust,
+        cashTrimmed: recomputed.cashTrimmed || []
+      },
+      message
+    });
+  } catch (error) {
+    console.error('Error editing payment history:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Remove a cash or discount entry from task payment history
+router.delete('/tasks/:id/payment-history/:entryId', async (req, res) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) {
+      return res.status(404).json({ success: false, message: 'Task not found' });
+    }
+
+    const entry = findPaymentHistoryEntry(task, req.params.entryId);
+    if (!entry) {
+      return res.status(404).json({ success: false, message: 'Payment entry not found' });
+    }
+
+    const originalFinal = originalFinalFromTask(task);
+    const oldAmount = round2(entry.amount);
+    const oldMode = entry.paymentMode || 'cash';
+    const isDiscount = oldMode === 'discount';
+    const entryIdStr = String(req.params.entryId);
+
+    // Remove from array first so recompute does not count this entry
+    task.paymentHistory = (task.paymentHistory || []).filter(
+      (h) => String(h._id) !== entryIdStr
+    );
+    task.markModified('paymentHistory');
+
+    const recomputed = applyHistoryRecompute(task, originalFinal);
+    if (recomputed.error) {
+      return res.status(400).json({ success: false, message: recomputed.error });
+    }
+
+    task.updatedBy = req.user?._id;
+    await task.save();
+
+    let populated = await Task.findById(task._id)
+      .populate('createdBy', 'username email')
+      .populate('updatedBy', 'username email');
+
+    let groupDoc = null;
+    let groupTasks = null;
+    if (populated.groupId) {
+      try {
+        const synced = await syncGroupTotalsFromTasks(populated.groupId, req.user?._id);
+        groupDoc = synced.group;
+        groupTasks = synced.tasks;
+        if (groupTasks?.length) {
+          const refreshed = groupTasks.find((t) => String(t._id) === String(populated._id));
+          if (refreshed) populated = refreshed;
+        }
+      } catch (e) {
+        console.error('Group sync after payment delete:', e);
+      }
+    }
+
+    broadcastTaskEvent('task_payment_removed', { task: populated });
+
+    res.json({
+      success: true,
+      data: {
+        task: populated,
+        ...(groupDoc ? { group: groupDoc } : {}),
+        ...(groupTasks ? { groupTasks } : {}),
+        balanceAdjust: isDiscount
+          ? null
+          : { remove: { amount: oldAmount, paymentMode: oldMode } }
+      },
+      message: isDiscount
+        ? `Discount of ₹${oldAmount} removed`
+        : `Payment of ₹${oldAmount} removed`
+    });
+  } catch (error) {
+    console.error('Error deleting payment history:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Add remaining payment to a task (optional discount when customer asks)
+// Logic: discount reduces finalCharges; cash received increases amountCollected.
+// unpaid after = finalCharges - discount - (amountCollected + received)
+// Cash only credits balances; discount does not.
 router.put('/tasks/:id/add-payment', async (req, res) => {
   try {
-    const { receivedAmount, paymentMode, paymentRemarks } = req.body;
-    
-    // Validation
-    if (!receivedAmount || receivedAmount <= 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Received amount must be greater than 0' 
+    const receivedAmount = round2(req.body.receivedAmount);
+    const discountAmount = round2(req.body.discountAmount || 0);
+    const { paymentMode, paymentRemarks } = req.body;
+
+    if ((!receivedAmount || receivedAmount <= 0) && (!discountAmount || discountAmount <= 0)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Enter a received amount and/or a discount greater than 0'
       });
     }
 
-    // Get the current task
+    if (discountAmount < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Discount cannot be negative'
+      });
+    }
+
     const currentTask = await Task.findById(req.params.id);
     if (!currentTask) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Task not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
       });
     }
 
-    // Validate received amount doesn't exceed unpaid amount
-    if (receivedAmount > currentTask.unpaidAmount) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Received amount cannot be more than unpaid amount (${currentTask.unpaidAmount})` 
+    const unpaid = round2(
+      currentTask.unpaidAmount != null
+        ? Number(currentTask.unpaidAmount)
+        : Math.max(Number(currentTask.finalCharges || 0) - Number(currentTask.amountCollected || 0), 0)
+    );
+
+    if (unpaid <= 0.001) {
+      return res.status(400).json({
+        success: false,
+        message: 'Task is already fully paid'
       });
     }
 
-    // Calculate new amounts
-    const newAmountCollected = currentTask.amountCollected + receivedAmount;
-    const newUnpaidAmount = Math.max(currentTask.finalCharges - newAmountCollected, 0);
+    if (discountAmount > unpaid + 0.001) {
+      return res.status(400).json({
+        success: false,
+        message: `Discount cannot exceed unpaid amount (${unpaid})`
+      });
+    }
 
-    // Add new payment to payment history
-    const newPayment = {
-      amount: receivedAmount,
-      paymentMode: paymentMode || 'cash',
-      paymentRemarks: paymentRemarks || '',
-      paidAt: new Date(),
-      isInitialPayment: false
-    };
+    const maxReceivable = round2(Math.max(unpaid - discountAmount, 0));
+    if (receivedAmount > maxReceivable + 0.001) {
+      return res.status(400).json({
+        success: false,
+        message:
+          discountAmount > 0
+            ? `After ₹${discountAmount} discount, max receivable is ₹${maxReceivable}`
+            : `Received amount cannot be more than unpaid amount (${unpaid})`
+      });
+    }
 
-    // Prepare update data
+    const newFinalCharges = round2(Math.max(Number(currentTask.finalCharges || 0) - discountAmount, 0));
+    const newAmountCollected = round2(Number(currentTask.amountCollected || 0) + receivedAmount);
+    const newUnpaidAmount = round2(Math.max(newFinalCharges - newAmountCollected, 0));
+    const newDiscountTotal = round2(Number(currentTask.discountAmount || 0) + discountAmount);
+
+    // Must not collect more than the discounted final charges
+    if (newAmountCollected > newFinalCharges + 0.001) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment would exceed final charges after discount'
+      });
+    }
+
+    const historyEntries = [];
+    if (discountAmount > 0.001) {
+      historyEntries.push({
+        amount: discountAmount,
+        paymentMode: 'discount',
+        paymentRemarks: paymentRemarks
+          ? `Discount: ${paymentRemarks}`
+          : 'Customer discount on remaining payment',
+        paidAt: new Date(),
+        isInitialPayment: false
+      });
+    }
+    if (receivedAmount > 0.001) {
+      historyEntries.push({
+        amount: receivedAmount,
+        paymentMode: paymentMode || 'cash',
+        paymentRemarks: paymentRemarks || '',
+        paidAt: new Date(),
+        isInitialPayment: false
+      });
+    }
+
     const updates = {
+      finalCharges: newFinalCharges,
       amountCollected: newAmountCollected,
       unpaidAmount: newUnpaidAmount,
-      updatedBy: req.user?._id,
-      $push: { paymentHistory: newPayment }
+      discountAmount: newDiscountTotal,
+      updatedBy: req.user?._id
     };
+    if (historyEntries.length === 1) {
+      updates.$push = { paymentHistory: historyEntries[0] };
+    } else if (historyEntries.length > 1) {
+      updates.$push = { paymentHistory: { $each: historyEntries } };
+    }
 
-    // Update the task
-    const task = await Task.findOneAndUpdate(
-      { _id: req.params.id },
-      updates,
-      { new: true }
-    ).populate('createdBy', 'username email').populate('updatedBy', 'username email');
+    let task = await Task.findOneAndUpdate({ _id: req.params.id }, updates, { new: true })
+      .populate('createdBy', 'username email')
+      .populate('updatedBy', 'username email');
 
-    // Broadcast update
+    // Rebuild group remaining/total/discount/history from all tasks (single source of truth)
+    let groupDoc = null;
+    let groupTasks = null;
+    if (task?.groupId) {
+      try {
+        const synced = await syncGroupTotalsFromTasks(task.groupId, req.user?._id);
+        groupDoc = synced.group;
+        groupTasks = synced.tasks;
+        if (groupTasks?.length) {
+          const refreshed = groupTasks.find((t) => String(t._id) === String(task._id));
+          if (refreshed) task = refreshed;
+        }
+      } catch (syncErr) {
+        console.error('Group sync after single-task payment:', syncErr);
+      }
+    }
+
     broadcastTaskEvent('task_payment_added', { task });
-    
-    res.json({ 
-      success: true, 
-      data: { task },
-      message: `Payment of ${receivedAmount} added successfully. ${newUnpaidAmount > 0 ? `Remaining unpaid: ${newUnpaidAmount}` : 'Task is now fully paid!'}`
+
+    const parts = [];
+    if (receivedAmount > 0) parts.push(`Payment of ₹${receivedAmount}`);
+    if (discountAmount > 0) parts.push(`discount of ₹${discountAmount}`);
+    const actionText = parts.join(' + ');
+    const groupRem =
+      groupDoc != null ? ` Group remaining: ₹${round2(groupDoc.remainingAmount)}.` : '';
+    res.json({
+      success: true,
+      data: {
+        task,
+        ...(groupDoc ? { group: groupDoc } : {}),
+        ...(groupTasks ? { groupTasks } : {})
+      },
+      message: `${actionText} applied successfully. ${
+        (task.unpaidAmount || 0) > 0.01
+          ? `Task unpaid: ₹${round2(task.unpaidAmount)}.`
+          : 'Task is now fully paid!'
+      }${groupRem}`
     });
   } catch (error) {
     console.error('Error adding payment:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Internal server error' 
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
     });
   }
 });
@@ -750,19 +1451,16 @@ router.get('/task-groups/:id', async (req, res) => {
     let group = await TaskGroup.findById(req.params.id);
     if (!group) return res.status(404).json({ success: false, message: 'Group not found' });
 
-    // If group is fully paid, clear unpaid on every linked task (legacy repair only)
-    const settled = await settleFullyPaidGroupTasks(group);
-    group = settled.group;
-
-    const tasks = await Task.find({ groupId: req.params.id, isDeleted: false })
-      .populate('createdBy', 'username email')
-      .populate('updatedBy', 'username email')
-      .sort({ createdAt: 1 });
+    // Rebuild group from tasks' payment history (source of truth).
+    // Always recompute remaining = sum(unpaid) so discount edits update remaining.
+    const synced = await syncGroupTotalsFromTasks(group._id, req.user?._id);
+    group = synced.group || group;
+    const populated = synced.tasks || [];
 
     res.json({
       success: true,
-      data: { group, tasks },
-      message: settled.repaired ? 'Fully paid group tasks cleared from unpaid' : undefined
+      data: { group, tasks: populated },
+      message: 'Group payment totals re-synced from tasks'
     });
   } catch (error) {
     console.error('Error fetching task group:', error);
@@ -895,18 +1593,46 @@ router.post('/task-groups', async (req, res) => {
 
 /**
  * Add group payment and apply only to selected tasks (in order).
+ * Optional discount when customer asks on remaining collection.
  * Body:
- *   receivedAmount, paymentMode, paymentRemarks
- *   taskIds: string[]  — ordered list of task IDs to fill first → next
- *   OR allocations: [{ taskId, amount }] — explicit amounts (optional override)
+ *   receivedAmount, discountAmount?, paymentMode, paymentRemarks
+ *   taskIds: string[]  — ordered list for cash fill
+ *   discountTaskIds?: string[]  — ordered list for sequential discount fill
+ *   discountAllocations?: [{ taskId, amount }] — exact per-task discount (preferred UI)
+ *   OR allocations: [{ taskId, amount }] — explicit cash amounts (optional override)
+ *
+ * Discount is applied first (reduces finalCharges / group totalAmount), then cash.
+ * Only cash increases totalPaid / bank balances.
  */
 router.put('/task-groups/:id/add-payment', async (req, res) => {
   try {
-    const { receivedAmount, paymentMode, paymentRemarks, taskIds, allocations: clientAllocations } = req.body;
-    const amount = round2(receivedAmount);
+    const {
+      paymentMode,
+      paymentRemarks,
+      taskIds,
+      discountTaskIds,
+      discountAllocations: clientDiscountAllocations,
+      allocations: clientAllocations
+    } = req.body;
+    const amount = round2(req.body.receivedAmount);
+    // Prefer sum of explicit per-task discounts when provided
+    let discountAmount = round2(req.body.discountAmount || 0);
+    if (Array.isArray(clientDiscountAllocations) && clientDiscountAllocations.length > 0) {
+      const sumDisc = round2(
+        clientDiscountAllocations.reduce((s, r) => s + (Number(r.amount) || 0), 0)
+      );
+      if (sumDisc > 0) discountAmount = sumDisc;
+    }
 
-    if (!amount || amount <= 0) {
-      return res.status(400).json({ success: false, message: 'Received amount must be greater than 0' });
+    if ((!amount || amount <= 0) && (!discountAmount || discountAmount <= 0)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Enter a received amount and/or a discount greater than 0'
+      });
+    }
+
+    if (discountAmount < 0) {
+      return res.status(400).json({ success: false, message: 'Discount cannot be negative' });
     }
 
     let group = await TaskGroup.findById(req.params.id);
@@ -916,170 +1642,383 @@ router.put('/task-groups/:id/add-payment', async (req, res) => {
     const pre = await settleFullyPaidGroupTasks(group);
     group = pre.group;
 
-    if (amount > round2(group.remainingAmount) + 0.001) {
+    const groupRemaining = round2(group.remainingAmount);
+    const settlementTotal = round2(amount + discountAmount);
+
+    if (settlementTotal > groupRemaining + 0.001) {
       return res.status(400).json({
         success: false,
-        message: `Amount cannot exceed remaining balance (${group.remainingAmount})`
+        message: `Cash + discount (₹${settlementTotal}) cannot exceed remaining balance (₹${groupRemaining})`
       });
     }
 
-    const groupTasks = await Task.find({ groupId: req.params.id, isDeleted: false }).sort({ createdAt: 1 });
+    if (discountAmount > groupRemaining + 0.001) {
+      return res.status(400).json({
+        success: false,
+        message: `Discount cannot exceed remaining balance (₹${groupRemaining})`
+      });
+    }
+
+    const maxCash = round2(Math.max(groupRemaining - discountAmount, 0));
+    if (amount > maxCash + 0.001) {
+      return res.status(400).json({
+        success: false,
+        message:
+          discountAmount > 0
+            ? `After ₹${discountAmount} discount, max receivable is ₹${maxCash}`
+            : `Amount cannot exceed remaining balance (${groupRemaining})`
+      });
+    }
+
+    const groupTasks = await findTasksForGroup(req.params.id);
     const taskById = new Map(groupTasks.map((t) => [String(t._id), t]));
 
-    let planAllocations = [];
-    let leftover = 0;
+    const resolveOrdered = (idList) => {
+      const ordered = [];
+      for (const id of idList) {
+        const t = taskById.get(String(id));
+        if (!t) {
+          return { error: `Task not in group: ${id}` };
+        }
+        ordered.push(t);
+      }
+      return { ordered };
+    };
 
-    if (Array.isArray(clientAllocations) && clientAllocations.length > 0) {
-      // Explicit amounts from UI
-      let remaining = amount;
+    // Cash targets (taskIds or allocations)
+    const cashIds = Array.isArray(taskIds) ? taskIds.map(String) : [];
+    let cashOrdered = [];
+    if (cashIds.length) {
+      const r = resolveOrdered(cashIds);
+      if (r.error) return res.status(400).json({ success: false, message: r.error });
+      cashOrdered = r.ordered;
+    } else if (Array.isArray(clientAllocations) && clientAllocations.length > 0) {
       for (const row of clientAllocations) {
         const t = taskById.get(String(row.taskId));
         if (!t) {
           return res.status(400).json({ success: false, message: `Task not in group: ${row.taskId}` });
         }
+        if (!cashOrdered.find((x) => String(x._id) === String(t._id))) cashOrdered.push(t);
+      }
+    }
+
+    // Explicit per-task discounts from Linked Tasks table: [{ taskId, amount }]
+    const explicitDiscountPairs = [];
+    if (Array.isArray(clientDiscountAllocations) && clientDiscountAllocations.length > 0) {
+      for (const row of clientDiscountAllocations) {
         const want = round2(row.amount);
         if (want <= 0) continue;
-        const unpaid = round2(Math.max(0, Number(t.unpaidAmount) || 0));
-        if (unpaid <= 0) {
+        const t = taskById.get(String(row.taskId));
+        if (!t) {
           return res.status(400).json({
             success: false,
-            message: `Task ${t.serialNo || t.taskName} is already fully paid`
+            message: `Discount task not in group: ${row.taskId}`
           });
         }
-        if (want > unpaid + 0.001) {
-          return res.status(400).json({
-            success: false,
-            message: `Amount for ${t.serialNo || t.taskName} exceeds its unpaid (${unpaid})`
-          });
-        }
-        if (want > remaining + 0.001) {
-          return res.status(400).json({
-            success: false,
-            message: 'Task allocations exceed received amount'
-          });
-        }
-        planAllocations.push({
-          task: t,
-          amount: want,
-          fullyPaid: round2(Number(t.amountCollected || 0) + want) >= round2(t.finalCharges) - 0.001
-        });
-        remaining = round2(remaining - want);
+        explicitDiscountPairs.push({ task: t, amount: want });
       }
-      leftover = remaining;
-    } else {
-      // Ordered task IDs — fill unpaid sequentially
-      const ids = Array.isArray(taskIds) ? taskIds.map(String) : [];
-      if (!ids.length) {
+    }
+
+    // Sequential discount targets (legacy / fallback)
+    const explicitDiscountIds = Array.isArray(discountTaskIds)
+      ? discountTaskIds.map(String)
+      : [];
+    let discountOrdered = [];
+    if (discountAmount > 0.001 && !explicitDiscountPairs.length) {
+      const dIds = explicitDiscountIds.length
+        ? explicitDiscountIds
+        : cashIds.length
+          ? cashIds
+          : cashOrdered.map((t) => String(t._id));
+      if (!dIds.length) {
         return res.status(400).json({
           success: false,
-          message: 'Select at least one task to apply this payment to'
+          message: 'Enter discount ₹ on the task row(s) customer asked discount for'
+        });
+      }
+      const r = resolveOrdered(dIds);
+      if (r.error) return res.status(400).json({ success: false, message: r.error });
+      discountOrdered = r.ordered;
+    }
+
+    if (amount > 0.001 && !cashOrdered.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'Select at least one task to apply cash/QR payment to'
+      });
+    }
+
+    if (amount <= 0 && discountAmount <= 0.001) {
+      return res.status(400).json({
+        success: false,
+        message: 'Enter a received amount and/or a discount greater than 0'
+      });
+    }
+
+    // Dry-run working state for all involved tasks (cash ∪ discount)
+    const simById = new Map();
+    const ensureSim = (t) => {
+      const id = String(t._id);
+      let row = simById.get(id);
+      if (!row) {
+        row = {
+          task: t,
+          unpaid: round2(
+            Math.max(
+              0,
+              t.unpaidAmount != null
+                ? Number(t.unpaidAmount)
+                : Number(t.finalCharges || 0) - Number(t.amountCollected || 0)
+            )
+          ),
+          finalCharges: round2(t.finalCharges),
+          amountCollected: round2(t.amountCollected || 0)
+        };
+        simById.set(id, row);
+      }
+      return row;
+    };
+    for (const p of explicitDiscountPairs) ensureSim(p.task);
+    for (const t of discountOrdered) ensureSim(t);
+    for (const t of cashOrdered) ensureSim(t);
+
+    // Preview discount fill
+    let remDisc = 0;
+    const discountPlanPreview = [];
+    if (discountAmount > 0.001) {
+      if (explicitDiscountPairs.length) {
+        for (const { task, amount: want } of explicitDiscountPairs) {
+          const row = ensureSim(task);
+          if (want > row.unpaid + 0.001) {
+            return res.status(400).json({
+              success: false,
+              message: `Discount for ${task.serialNo || task.taskName} (₹${want}) exceeds unpaid (₹${row.unpaid})`
+            });
+          }
+          if (row.unpaid <= 0) {
+            return res.status(400).json({
+              success: false,
+              message: `Task ${task.serialNo || task.taskName} has no unpaid for discount`
+            });
+          }
+          const d = round2(Math.min(row.unpaid, want));
+          if (d <= 0) continue;
+          row.finalCharges = round2(Math.max(row.finalCharges - d, 0));
+          row.unpaid = round2(Math.max(row.finalCharges - row.amountCollected, 0));
+          discountPlanPreview.push({ task: row.task, amount: d, fullyPaid: row.unpaid <= 0.001 });
+        }
+      } else {
+        remDisc = discountAmount;
+        for (const t of discountOrdered) {
+          if (remDisc <= 0.001) break;
+          const row = ensureSim(t);
+          if (row.unpaid <= 0) continue;
+          const d = round2(Math.min(row.unpaid, remDisc));
+          if (d <= 0) continue;
+          row.finalCharges = round2(Math.max(row.finalCharges - d, 0));
+          row.unpaid = round2(Math.max(row.finalCharges - row.amountCollected, 0));
+          discountPlanPreview.push({ task: row.task, amount: d, fullyPaid: row.unpaid <= 0.001 });
+          remDisc = round2(remDisc - d);
+        }
+        if (remDisc > 0.01) {
+          return res.status(400).json({
+            success: false,
+            message: `₹${remDisc} discount still unallocated. Enter discount on more task rows.`,
+            data: { leftover: remDisc }
+          });
+        }
+      }
+      if (!discountPlanPreview.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'No unpaid balance for discount. Enter discount ₹ on unpaid task rows.'
+        });
+      }
+    }
+
+    // Preview cash fill on post-discount unpaid — only on cashOrdered
+    let planAllocations = [];
+    let leftover = 0;
+    if (amount > 0.001) {
+      if (Array.isArray(clientAllocations) && clientAllocations.length > 0) {
+        let remaining = amount;
+        for (const row of clientAllocations) {
+          const taskDoc = taskById.get(String(row.taskId));
+          if (!taskDoc) {
+            return res.status(400).json({ success: false, message: `Task not in group: ${row.taskId}` });
+          }
+          const s = ensureSim(taskDoc);
+          const want = round2(row.amount);
+          if (want <= 0) continue;
+          if (s.unpaid <= 0) {
+            return res.status(400).json({
+              success: false,
+              message: `Task ${s.task.serialNo || s.task.taskName} is already fully paid after discount`
+            });
+          }
+          if (want > s.unpaid + 0.001) {
+            return res.status(400).json({
+              success: false,
+              message: `Amount for ${s.task.serialNo || s.task.taskName} exceeds its unpaid after discount (${s.unpaid})`
+            });
+          }
+          if (want > remaining + 0.001) {
+            return res.status(400).json({
+              success: false,
+              message: 'Task allocations exceed received amount'
+            });
+          }
+          planAllocations.push({
+            task: s.task,
+            amount: want,
+            fullyPaid: round2(s.amountCollected + want) >= s.finalCharges - 0.001
+          });
+          s.amountCollected = round2(s.amountCollected + want);
+          s.unpaid = round2(Math.max(s.finalCharges - s.amountCollected, 0));
+          remaining = round2(remaining - want);
+        }
+        leftover = remaining;
+      } else {
+        let remCash = amount;
+        for (const t of cashOrdered) {
+          if (remCash <= 0.001) break;
+          const row = ensureSim(t);
+          if (row.unpaid <= 0) continue;
+          const add = round2(Math.min(row.unpaid, remCash));
+          if (add <= 0) continue;
+          const newCollected = round2(row.amountCollected + add);
+          planAllocations.push({
+            task: row.task,
+            amount: add,
+            fullyPaid: newCollected >= row.finalCharges - 0.001
+          });
+          row.amountCollected = newCollected;
+          row.unpaid = round2(Math.max(row.finalCharges - newCollected, 0));
+          remCash = round2(remCash - add);
+        }
+        leftover = remCash;
+      }
+
+      if (!planAllocations.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'No unpaid balance on selected cash tasks. Tick other unpaid tasks.'
         });
       }
 
-      const ordered = [];
-      for (const id of ids) {
-        const t = taskById.get(id);
-        if (!t) {
-          return res.status(400).json({ success: false, message: `Task not in group: ${id}` });
-        }
-        ordered.push(t);
+      if (leftover > 0.01) {
+        return res.status(400).json({
+          success: false,
+          message: `₹${leftover} still unallocated. Tick more cash tasks to apply the remaining amount.`,
+          data: {
+            leftover,
+            preview: planAllocations.map((a) => ({
+              taskId: a.task._id,
+              serialNo: a.task.serialNo,
+              taskName: a.task.taskName,
+              amount: a.amount,
+              fullyPaid: a.fullyPaid
+            }))
+          }
+        });
       }
-
-      const plan = planSequentialAllocation(ordered, amount);
-      planAllocations = plan.allocations;
-      leftover = plan.leftover;
     }
 
-    if (!planAllocations.length) {
-      return res.status(400).json({
-        success: false,
-        message: 'No unpaid balance on selected tasks. Tick other tasks that still need payment.'
+    // All validated — apply discount then cash for real
+    let discountAllocations = [];
+    let discountApplied = 0;
+    if (discountAmount > 0.001) {
+      const meta = {
+        paymentRemarks: paymentRemarks || '',
+        userId: req.user?._id
+      };
+      if (explicitDiscountPairs.length) {
+        const dPlan = await applyExplicitDiscountAllocations(explicitDiscountPairs, meta);
+        discountAllocations = dPlan.allocations;
+        discountApplied = dPlan.appliedTotal;
+      } else {
+        const discountNames = discountOrdered
+          .map((t) => t.taskName || t.serialNo)
+          .filter(Boolean)
+          .join(', ');
+        const dPlan = await planAndApplyDiscountToTasks(discountOrdered, discountAmount, {
+          paymentRemarks: paymentRemarks
+            ? `${paymentRemarks}${discountNames ? ` [on: ${discountNames}]` : ''}`
+            : discountNames
+              ? `Customer discount on: ${discountNames}`
+              : '',
+          userId: req.user?._id
+        });
+        discountAllocations = dPlan.allocations;
+        discountApplied = dPlan.appliedTotal;
+      }
+    }
+
+    if (amount > 0.001 && planAllocations.length) {
+      // Refresh task unpaid/final from DB after discount before applying cash
+      const cashTaskIds = planAllocations.map((a) => a.task._id);
+      const refreshed = await Task.find({ _id: { $in: cashTaskIds } });
+      const refreshedById = new Map(refreshed.map((t) => [String(t._id), t]));
+      planAllocations = planAllocations.map((a) => {
+        const t = refreshedById.get(String(a.task._id)) || a.task;
+        return { ...a, task: t };
+      });
+
+      await applyAllocationsToTasks(planAllocations, {
+        paymentMode: paymentMode || 'cash',
+        paymentRemarks: paymentRemarks || '',
+        isInitialPayment: false,
+        userId: req.user?._id
       });
     }
 
-    if (leftover > 0.01) {
-      return res.status(400).json({
-        success: false,
-        message: `₹${leftover} still unallocated. Tick more tasks to apply the remaining amount.`,
-        data: {
-          leftover,
-          preview: planAllocations.map((a) => ({
-            taskId: a.task._id,
-            serialNo: a.task.serialNo,
-            taskName: a.task.taskName,
-            amount: a.amount,
-            fullyPaid: a.fullyPaid
-          }))
-        }
-      });
-    }
+    const appliedCash = round2(planAllocations.reduce((s, a) => s + a.amount, 0));
 
-    const allocatedSum = round2(planAllocations.reduce((s, a) => s + a.amount, 0));
-    // Only credit group with what was applied to tasks (should equal amount after leftover check)
-    const appliedAmount = allocatedSum;
+    // Rebuild group totals + history + remaining from all tasks (single source of truth)
+    const synced = await syncGroupTotalsFromTasks(req.params.id, req.user?._id);
+    const updatedGroup = synced.group;
+    const populatedTasks = synced.tasks || [];
+    const newRemaining = round2(updatedGroup?.remainingAmount || 0);
 
-    const newTotalPaid = round2((group.totalPaid || 0) + appliedAmount);
-    const newRemaining = round2(Math.max((group.totalAmount || 0) - newTotalPaid, 0));
-
-    const newPayment = {
-      amount: appliedAmount,
-      paymentMode: paymentMode || 'cash',
-      paymentRemarks: paymentRemarks || '',
-      paidAt: new Date(),
-      isInitialPayment: false
-    };
-
-    let updatedGroup = await TaskGroup.findByIdAndUpdate(
-      req.params.id,
-      {
-        totalPaid: newTotalPaid,
-        remainingAmount: newRemaining,
-        updatedBy: req.user?._id,
-        $push: { paymentHistory: newPayment }
-      },
-      { new: true }
-    );
-
-    await applyAllocationsToTasks(planAllocations, {
-      paymentMode: paymentMode || 'cash',
-      paymentRemarks: paymentRemarks || '',
-      isInitialPayment: false,
-      userId: req.user?._id
-    });
-
-    // If group is fully paid, settle any leftover task unpaid
-    if (newRemaining <= 0.01) {
-      const settled = await settleFullyPaidGroupTasks(updatedGroup);
-      updatedGroup = settled.group;
-    }
-
-    const finalTasks = await Task.find({ groupId: req.params.id, isDeleted: false })
-      .populate('createdBy', 'username email')
-      .populate('updatedBy', 'username email')
-      .sort({ createdAt: 1 });
-
-    const paidNames = planAllocations
+    const fullyPaidFromCash = planAllocations
       .filter((a) => a.fullyPaid)
-      .map((a) => a.task.taskName || a.task.serialNo)
-      .join(', ');
+      .map((a) => a.task.taskName || a.task.serialNo);
+    const fullyPaidFromDiscount = discountAllocations
+      .filter((a) => a.fullyPaid)
+      .map((a) => a.task.taskName || a.task.serialNo);
+    const paidNames = [...new Set([...fullyPaidFromCash, ...fullyPaidFromDiscount])].join(', ');
+
+    const parts = [];
+    if (appliedCash > 0) parts.push(`₹${appliedCash} cash`);
+    if (discountApplied > 0) parts.push(`₹${discountApplied} discount`);
+    const actionText = parts.join(' + ');
 
     res.json({
       success: true,
       data: {
         group: updatedGroup,
-        tasks: finalTasks,
+        tasks: populatedTasks,
         applied: planAllocations.map((a) => ({
           taskId: a.task._id,
           serialNo: a.task.serialNo,
           taskName: a.task.taskName,
           amount: a.amount,
-          fullyPaid: a.fullyPaid
+          fullyPaid: a.fullyPaid,
+          type: 'cash'
+        })),
+        discountApplied: discountAllocations.map((a) => ({
+          taskId: a.task._id,
+          serialNo: a.task.serialNo,
+          taskName: a.task.taskName,
+          amount: a.amount,
+          fullyPaid: a.fullyPaid,
+          type: 'discount'
         }))
       },
       message:
         newRemaining > 0.01
-          ? `Applied ₹${appliedAmount} to selected tasks.${paidNames ? ` Fully paid: ${paidNames}.` : ''} Group remaining: ₹${updatedGroup.remainingAmount}`
-          : `Group fully paid. Applied ₹${appliedAmount} to selected tasks.`
+          ? `Applied ${actionText} to selected tasks.${paidNames ? ` Fully paid: ${paidNames}.` : ''} Group remaining: ₹${updatedGroup.remainingAmount}`
+          : `Group fully paid. Applied ${actionText} to selected tasks.`
     });
   } catch (error) {
     console.error('Error adding group payment:', error);

@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
-import { Task, Service, Employee } from '../../types';
+import { Task, Service, Employee, PaymentHistoryEntry } from '../../types';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import { Edit, UserPlus, Eye, DollarSign, Layers, GripVertical } from 'lucide-react';
+import { Edit, UserPlus, Eye, DollarSign, Layers, GripVertical, Pencil, Trash2 } from 'lucide-react';
+import EditPaymentEntryModal, {
+  PaymentEntryEditPayload
+} from '../Modals/EditPaymentEntryModal';
 
 interface EnhancedTaskListProps {
   tasks: Task[];
@@ -14,6 +17,12 @@ interface EnhancedTaskListProps {
   onTaskDelete: (taskId: string) => void;
   onAddPayment?: (task: Task) => void;
   onViewGroup?: (groupId: string) => void;
+  onEditPaymentEntry?: (
+    taskId: string,
+    entryId: string,
+    updates: PaymentEntryEditPayload
+  ) => Promise<void>;
+  onDeletePaymentEntry?: (taskId: string, entryId: string) => Promise<boolean | void>;
 }
 
 const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({ 
@@ -26,7 +35,9 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
   onTaskEdit,
   onTaskDelete,
   onAddPayment,
-  onViewGroup
+  onViewGroup,
+  onEditPaymentEntry,
+  onDeletePaymentEntry
 }) => {
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
@@ -46,6 +57,11 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
     fromIndex?: number; 
     expiresAt: number;
   }>>({});
+  const [editingPayment, setEditingPayment] = useState<{
+    task: Task;
+    entry: PaymentHistoryEntry;
+  } | null>(null);
+  const [historyBusyId, setHistoryBusyId] = useState<string | null>(null);
 
   // Search is always performed against the *full* tasks list.
   // This ensures that searching for a service finds matches across *all* tasks
@@ -571,6 +587,9 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Amount
+                <span className="block font-normal normal-case text-[10px] text-gray-400">
+                  original / after disc.
+                </span>
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Type
@@ -656,7 +675,26 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div>
-                    <div className="text-sm font-medium text-gray-900">{formatCurrency(task.finalCharges)}</div>
+                    {(() => {
+                      const disc = Number(task.discountAmount) || 0;
+                      const after = Number(task.finalCharges) || 0;
+                      const original = after + disc;
+                      return (
+                        <>
+                          <div className="text-sm font-medium text-gray-900">
+                            {formatCurrency(original)}
+                          </div>
+                          {disc > 0 ? (
+                            <div className="text-xs text-blue-700">
+                              After disc: {formatCurrency(after)}
+                              <span className="text-amber-700 ml-1">
+                                (−{formatCurrency(disc)})
+                              </span>
+                            </div>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                     <div className="text-sm text-gray-500">
                       Paid: {formatCurrency(task.amountCollected)}
                     </div>
@@ -820,7 +858,26 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                       <div><span className="font-medium">Task Type:</span> {task.taskType ? task.taskType : <span className="text-red-500">No data</span>}</div>
                       <div><span className="font-medium">Assigned To:</span> {task.assignedTo ? task.assignedTo : <span className="text-red-500">No data</span>}</div>
                       <div><span className="font-medium">Service Charge:</span> {task.serviceCharge ? formatCurrency(task.serviceCharge) : <span className="text-red-500">No data</span>}</div>
-                      <div><span className="font-medium">Final Charges:</span> {task.finalCharges ? formatCurrency(task.finalCharges) : <span className="text-red-500">No data</span>}</div>
+                      <div>
+                        <span className="font-medium">Amount (no discount):</span>{' '}
+                        {formatCurrency(
+                          (Number(task.finalCharges) || 0) + (Number(task.discountAmount) || 0)
+                        )}
+                      </div>
+                      <div>
+                        <span className="font-medium">After discount:</span>{' '}
+                        {task.finalCharges != null ? (
+                          formatCurrency(task.finalCharges)
+                        ) : (
+                          <span className="text-red-500">No data</span>
+                        )}
+                      </div>
+                      <div className="text-amber-700">
+                        <span className="font-medium">Discount given:</span>{' '}
+                        {(task.discountAmount || 0) > 0
+                          ? `−${formatCurrency(task.discountAmount || 0)}`
+                          : '—'}
+                      </div>
                       <div><span className="font-medium">Payment Mode:</span> {task.paymentMode ? task.paymentMode : <span className="text-red-500">No data</span>}</div>
                       <div><span className="font-medium">Payment Remarks:</span> {task.paymentRemarks ? task.paymentRemarks : <span className="text-red-500">No data</span>}</div>
                       <div><span className="font-medium">Amount Collected:</span> {task.amountCollected ? formatCurrency(task.amountCollected) : <span className="text-red-500">No data</span>}</div>
@@ -853,26 +910,101 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
                                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Amount</th>
                                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Payment Mode</th>
                                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-600">Remarks</th>
+                                  {(onEditPaymentEntry || onDeletePaymentEntry) && (
+                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-600">
+                                      Actions
+                                    </th>
+                                  )}
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-gray-200">
-                                {task.paymentHistory.map((payment, idx) => (
-                                  <tr key={idx} className="hover:bg-gray-50">
+                                {task.paymentHistory.map((payment, idx) => {
+                                  const entryKey = payment.id || `${task.id}-${idx}`;
+                                  const busy = historyBusyId === entryKey;
+                                  return (
+                                  <tr key={entryKey} className="hover:bg-gray-50">
                                     <td className="px-4 py-2 text-sm">{formatDate(payment.paidAt)}</td>
                                     <td className="px-4 py-2 text-sm">
-                                      {payment.isInitialPayment ? (
+                                      {payment.paymentMode === 'discount' ? (
+                                        <span className="px-2 py-1 bg-amber-100 text-amber-800 text-xs rounded-full">Discount</span>
+                                      ) : payment.isInitialPayment ? (
                                         <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">Initial Payment</span>
                                       ) : (
                                         <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Unpaid Payment</span>
                                       )}
                                     </td>
-                                    <td className="px-4 py-2 text-sm font-medium">{formatCurrency(payment.amount)}</td>
+                                    <td className={`px-4 py-2 text-sm font-medium ${payment.paymentMode === 'discount' ? 'text-amber-700' : ''}`}>
+                                      {payment.paymentMode === 'discount' ? '−' : ''}{formatCurrency(payment.amount)}
+                                    </td>
                                     <td className="px-4 py-2 text-sm capitalize">
-                                      {payment.paymentMode === 'personal-qr' ? 'Personal QR (Vaibhav)' : payment.paymentMode.replace('-', ' ')}
+                                      {payment.paymentMode === 'discount'
+                                        ? 'Discount'
+                                        : payment.paymentMode === 'personal-qr'
+                                          ? 'Personal QR (Vaibhav)'
+                                          : payment.paymentMode.replace('-', ' ')}
                                     </td>
                                     <td className="px-4 py-2 text-sm text-gray-600">{payment.paymentRemarks || '-'}</td>
+                                    {(onEditPaymentEntry || onDeletePaymentEntry) && (
+                                      <td className="px-4 py-2 text-right">
+                                        <div className="inline-flex items-center gap-1">
+                                          {onEditPaymentEntry && payment.id && (
+                                            <button
+                                              type="button"
+                                              disabled={busy}
+                                              onClick={() =>
+                                                setEditingPayment({ task, entry: payment })
+                                              }
+                                              className="p-1.5 rounded-md text-blue-600 hover:bg-blue-50 disabled:opacity-40"
+                                              title="Edit entry"
+                                            >
+                                              <Pencil size={14} />
+                                            </button>
+                                          )}
+                                          {onDeletePaymentEntry && payment.id && (
+                                            <button
+                                              type="button"
+                                              disabled={busy}
+                                              onClick={async () => {
+                                                const kind =
+                                                  payment.paymentMode === 'discount'
+                                                    ? 'discount'
+                                                    : 'payment';
+                                                if (
+                                                  !window.confirm(
+                                                    `Remove this ${kind} of ${formatCurrency(payment.amount)}?`
+                                                  )
+                                                ) {
+                                                  return;
+                                                }
+                                                setHistoryBusyId(entryKey);
+                                                try {
+                                                  await onDeletePaymentEntry(
+                                                    task.id,
+                                                    payment.id!
+                                                  );
+                                                } catch (e: any) {
+                                                  alert(e?.message || 'Failed to remove entry');
+                                                } finally {
+                                                  setHistoryBusyId(null);
+                                                }
+                                              }}
+                                              className="p-1.5 rounded-md text-red-600 hover:bg-red-50 disabled:opacity-40"
+                                              title="Remove entry"
+                                            >
+                                              <Trash2 size={14} />
+                                            </button>
+                                          )}
+                                          {!payment.id && (
+                                            <span className="text-[10px] text-gray-400">
+                                              Reload to edit
+                                            </span>
+                                          )}
+                                        </div>
+                                      </td>
+                                    )}
                                   </tr>
-                                ))}
+                                  );
+                                })}
                               </tbody>
                             </table>
                           </div>
@@ -928,6 +1060,31 @@ const EnhancedTaskList: React.FC<EnhancedTaskListProps> = ({
           </div>
         )}
       </div>
+
+      {onEditPaymentEntry && (
+        <EditPaymentEntryModal
+          isOpen={!!editingPayment}
+          onClose={() => setEditingPayment(null)}
+          entry={editingPayment?.entry || null}
+          taskLabel={
+            editingPayment
+              ? `${editingPayment.task.taskName} (${editingPayment.task.serialNo})`
+              : undefined
+          }
+          cashCollected={editingPayment?.task.amountCollected || 0}
+          finalCharges={editingPayment?.task.finalCharges || 0}
+          onSave={async (updates) => {
+            if (!editingPayment?.entry.id) {
+              throw new Error('Missing entry id — refresh the page and try again');
+            }
+            await onEditPaymentEntry(
+              editingPayment.task.id,
+              editingPayment.entry.id,
+              updates
+            );
+          }}
+        />
+      )}
     </div>
   );
 };
